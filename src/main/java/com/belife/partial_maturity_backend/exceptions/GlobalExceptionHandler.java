@@ -88,4 +88,40 @@ public class GlobalExceptionHandler {
             .status(status)
             .body(body);
     }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleUserNotFound(
+            UserNotFoundException exception
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                "USER_NOT_FOUND",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(UsernameAlreadyExistsException.class)
+    public ResponseEntity<Map<String, Object>> handleUsernameAlreadyExists(
+            UsernameAlreadyExistsException exception
+    ) {
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                "USERNAME_ALREADY_EXISTS",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(InvalidUserOperationException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidUserOperation(
+            InvalidUserOperationException exception
+    ) {
+        return buildResponse(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "INVALID_USER_OPERATION",
+                exception.getMessage(),
+                List.of()
+        );
+    }
 }
