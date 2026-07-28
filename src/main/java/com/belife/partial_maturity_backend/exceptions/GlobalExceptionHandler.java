@@ -1,5 +1,6 @@
 package com.belife.partial_maturity_backend.exceptions;
 
+import com.belife.partial_maturity_backend.dtos.responses.CsvImportResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -120,6 +121,41 @@ public class GlobalExceptionHandler {
         return buildResponse(
                 HttpStatus.UNPROCESSABLE_ENTITY,
                 "INVALID_USER_OPERATION",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(CsvImportRejectedException.class)
+    public ResponseEntity<CsvImportResponse> handleCsvImportRejected(
+            CsvImportRejectedException exception
+    ) {
+        return ResponseEntity
+                .unprocessableEntity()
+                .body(exception.getResponse());
+    }
+
+    @ExceptionHandler(CsvFileProcessingException.class)
+    public ResponseEntity<Map<String, Object>>
+    handleCsvFileProcessingException(
+            CsvFileProcessingException exception
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                "CSV_FILE_PROCESSING_ERROR",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(ImportBatchNotFoundException.class)
+    public ResponseEntity<Map<String, Object>>
+    handleImportBatchNotFound(
+            ImportBatchNotFoundException exception
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                "IMPORT_BATCH_NOT_FOUND",
                 exception.getMessage(),
                 List.of()
         );

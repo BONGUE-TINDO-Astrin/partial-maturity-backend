@@ -40,6 +40,12 @@ application:
       password: ${BOOTSTRAP_ADMIN_PASSWORD}
       full-name: ${BOOTSTRAP_ADMIN_FULL_NAME:Administrateur BeLife}
 
+  spring:
+    servlet:
+      multipart:
+        max-file-size: 10MB
+        max-request-size: 10MB
+
 management:
   endpoints:
     web:
