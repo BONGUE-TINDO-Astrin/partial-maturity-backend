@@ -1,8 +1,10 @@
 package com.belife.partial_maturity_backend.exceptions;
 
 import com.belife.partial_maturity_backend.dtos.responses.CsvImportResponse;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -157,6 +159,83 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND,
                 "IMPORT_BATCH_NOT_FOUND",
                 exception.getMessage(),
+                List.of()
+        );
+    }
+
+    /**
+     * Retourne HTTP 404 lorsqu'une police n'existe pas
+     * dans les données de maturités importées.
+     */
+    @ExceptionHandler(PolicyNotFoundException.class)
+    public ResponseEntity<Map<String, Object>>
+    handlePolicyNotFound(
+            PolicyNotFoundException exception
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                "POLICY_NOT_FOUND",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    /**
+     * Retourne HTTP 400 lorsque le numéro de police
+     * fourni est invalide.
+     */
+    @ExceptionHandler(InvalidPolicyNumberException.class)
+    public ResponseEntity<Map<String, Object>>
+    handleInvalidPolicyNumber(
+            InvalidPolicyNumberException exception
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_POLICY_NUMBER",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(PaymentNotFoundException.class)
+    public ResponseEntity<Map<String, Object>>
+    handlePaymentNotFound(
+            PaymentNotFoundException exception
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                "PAYMENT_NOT_FOUND",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(PaymentNotAllowedException.class)
+    public ResponseEntity<Map<String, Object>>
+    handlePaymentNotAllowed(
+            PaymentNotAllowedException exception
+    ) {
+        return buildResponse(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "PAYMENT_NOT_ALLOWED",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler({
+            ConcurrentPaymentOperationException.class,
+            ObjectOptimisticLockingFailureException.class,
+            PessimisticLockingFailureException.class
+    })
+    public ResponseEntity<Map<String, Object>>
+    handleConcurrentPaymentOperation(
+            RuntimeException exception
+    ) {
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                "CONCURRENT_PAYMENT_OPERATION",
+                "La situation financière a été modifiée par une autre opération. Veuillez actualiser puis recommencer.",
                 List.of()
         );
     }

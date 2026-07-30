@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -78,8 +79,14 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/admin/**")
                 .hasRole("ADMIN")
 
-                .requestMatchers("/api/v1/accounting/**")
+                .requestMatchers(HttpMethod.GET,"/api/v1/policies/**")
+                .hasAnyRole("ADMIN", "COMPTABILITE")
+
+                .requestMatchers(HttpMethod.POST, "/api/v1/policies/*/payments", "/api/v1/payments/*/cancel")
                 .hasRole("COMPTABILITE")
+
+                .requestMatchers(HttpMethod.GET, "/api/v1/policies/**", "/api/v1/payments/**")
+                .hasAnyRole("ADMIN", "COMPTABILITE")
 
                 .anyRequest()
                 .authenticated()

@@ -1,7 +1,11 @@
 package com.belife.partial_maturity_backend.repositories;
 
 import com.belife.partial_maturity_backend.entities.PolicyMaturityEntity;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
@@ -41,4 +45,26 @@ public interface PolicyMaturityRepository extends JpaRepository<PolicyMaturityEn
      */
     List<PolicyMaturityEntity>
     findAllByImportBatchIdOrderByPolicyNumberAscMaturityRankAsc(Long importBatchId);
+
+    /**
+     * Verrouille les maturités d'une police pendant
+     * l'enregistrement d'un paiement.
+     *
+     * <p>Tous les traitements de paiement d'une même police
+     * doivent acquérir ce verrou avant de recalculer.</p>
+     *
+     * <p>Le second traitement concurrent attendra la fin du premier,
+     * puis recalculera la situation avec le paiement fraîchement
+     * enregistré. Si la situation est déjà soldée, le second paiement
+     * sera refusé.</p>
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select maturity
+        from PolicyMaturityEntity maturity
+        where upper(maturity.policyNumber)
+              = upper(:policyNumber)
+        order by maturity.maturityRank asc
+        """)
+    List<PolicyMaturityEntity> findAllByPolicyNumberForPaymentUpdate(@Param("policyNumber") String policyNumber);
 }

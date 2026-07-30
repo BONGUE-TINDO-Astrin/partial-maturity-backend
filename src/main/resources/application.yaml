@@ -46,6 +46,9 @@ application:
         max-file-size: 10MB
         max-request-size: 10MB
 
+  interest:
+    annual-rate: ${INTEREST_ANNUAL_RATE:0.032}
+
 management:
   endpoints:
     web:
