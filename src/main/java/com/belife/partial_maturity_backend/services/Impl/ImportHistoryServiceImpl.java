@@ -10,7 +10,9 @@ import com.belife.partial_maturity_backend.mappers.ImportBatchMapper;
 import com.belife.partial_maturity_backend.mappers.PolicyMaturityMapper;
 import com.belife.partial_maturity_backend.repositories.ImportBatchRepository;
 import com.belife.partial_maturity_backend.repositories.PolicyMaturityRepository;
+import com.belife.partial_maturity_backend.services.ImportBatchReversalEligibilityService;
 import com.belife.partial_maturity_backend.services.ImportHistoryService;
+import com.belife.partial_maturity_backend.services.models.ImportBatchReversalEligibility;
 import com.belife.partial_maturity_backend.utils.CsvValidationErrorJsonCodec;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -39,6 +41,7 @@ public class ImportHistoryServiceImpl implements ImportHistoryService {
     private final ImportBatchMapper importBatchMapper;
     private final PolicyMaturityMapper policyMaturityMapper;
     private final CsvValidationErrorJsonCodec errorJsonCodec;
+    private final ImportBatchReversalEligibilityService reversalEligibilityService;
 
     @Override
     public PageResponse<ImportBatchSummaryResponse>
@@ -63,8 +66,16 @@ public class ImportHistoryServiceImpl implements ImportHistoryService {
     }
 
     @Override
-    public ImportBatchDetailResponse getImportDetail(Long batchId) {
-        ImportBatchEntity batch = findBatch(batchId);
+    public ImportBatchDetailResponse getImportDetail(
+            Long batchId
+    ) {
+        ImportBatchEntity batch =
+                findBatch(batchId);
+
+        ImportBatchReversalEligibility eligibility =
+                reversalEligibilityService.evaluate(
+                        batch
+                );
 
         return new ImportBatchDetailResponse(
                 batch.getId(),
@@ -78,11 +89,18 @@ public class ImportHistoryServiceImpl implements ImportHistoryService {
                 batch.getStatus(),
                 batch.getImportedAt(),
                 batch.getImportedBy(),
+                batch.getReversedAt(),
+                batch.getReversedBy(),
+                batch.getReversalReason(),
+                eligibility.reversible(),
+                eligibility.blockedReason(),
                 batch.getCreatedAt(),
                 batch.getCreatedBy(),
                 batch.getUpdatedAt(),
                 batch.getUpdatedBy(),
-                errorJsonCodec.read( batch.getErrorSummary())
+                errorJsonCodec.read(
+                        batch.getErrorSummary()
+                )
         );
     }
 

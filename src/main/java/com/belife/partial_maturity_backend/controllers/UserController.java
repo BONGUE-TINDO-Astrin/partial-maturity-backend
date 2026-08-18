@@ -33,11 +33,15 @@ public class UserController {
         return ResponseEntity.ok(userService.getAllUsers());
     }
 
+    /**
+     * Crée un utilisateur et transmet l'identité
+     * de l'administrateur au service métier.
+     */
     @PostMapping
-    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserRequest request) {
+    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserRequest request, Authentication authentication) {
         return ResponseEntity
             .status(HttpStatus.CREATED)
-            .body(userService.createUser(request));
+            .body(userService.createUser(request, authentication.getName()));
     }
 
     @PutMapping("/{userId}")

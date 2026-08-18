@@ -14,7 +14,7 @@ import java.math.BigDecimal;
  * <p>Le taux annuel est exprimé sous forme décimale.</p>
  *
  * <pre>
- * 3,2 % = 0.032
+ * 3,5 % = 0.035
  * </pre>
  *
  * @param annualRate taux annuel fixe appliqué à chaque

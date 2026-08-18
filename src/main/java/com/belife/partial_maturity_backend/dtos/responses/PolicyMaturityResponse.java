@@ -5,7 +5,19 @@ import java.time.Instant;
 import java.time.LocalDate;
 
 /**
- * Représente une maturité importée et présentée à l'administrateur.
+ * Représente une maturité importée et présentée
+ * dans les écrans de consultation.
+ *
+ * @param id identifiant technique
+ * @param policyNumber numéro de police
+ * @param maturityType type de maturité
+ * @param maturityRank rang de maturité
+ * @param maturityDate date de maturité
+ * @param maturityAmount montant de maturité
+ * @param interestEndDate date de fin de production des intérêts
+ * @param sourceRowNumber ligne d'origine dans le fichier CSV
+ * @param createdAt date technique de création
+ * @param createdBy utilisateur ayant créé la maturité
  */
 public record PolicyMaturityResponse(
         Long id,
@@ -14,6 +26,7 @@ public record PolicyMaturityResponse(
         int maturityRank,
         LocalDate maturityDate,
         BigDecimal maturityAmount,
+        LocalDate interestEndDate,
         int sourceRowNumber,
         Instant createdAt,
         String createdBy

@@ -8,19 +8,24 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Clock;
 
 /**
- * Configuration du moteur de calcul des intérêts.
+ * Configuration du moteur de calcul des intérêts
+ * et de l'horloge technique de l'application.
  */
 @Configuration
-@EnableConfigurationProperties(InterestProperties.class)
+@EnableConfigurationProperties(
+        InterestProperties.class
+)
 public class InterestCalculationConfig {
 
     /**
-     * Fournit l'horloge utilisée pour obtenir la date métier.
+     * Fournit l'horloge UTC réelle de l'application.
      *
-     * <p>Injecter Clock au lieu d'appeler directement
-     * LocalDate.now() permet de fixer la date dans les tests.</p>
+     * <p>Cette horloge reste utilisée pour les timestamps
+     * techniques. La simulation d'une date métier en
+     * développement est gérée séparément par
+     * BusinessDateProvider.</p>
      *
-     * @return horloge UTC de production
+     * @return horloge système UTC
      */
     @Bean
     public Clock applicationClock() {

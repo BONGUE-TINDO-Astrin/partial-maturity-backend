@@ -5,13 +5,17 @@ import com.belife.partial_maturity_backend.dtos.requests.CreateUserRequest;
 import com.belife.partial_maturity_backend.dtos.requests.UpdateUserRequest;
 import com.belife.partial_maturity_backend.dtos.responses.UserResponse;
 import com.belife.partial_maturity_backend.entities.AppUserEntity;
+import com.belife.partial_maturity_backend.enums.AuditEventType;
+import com.belife.partial_maturity_backend.enums.AuditResourceType;
 import com.belife.partial_maturity_backend.enums.UserRole;
 import com.belife.partial_maturity_backend.exceptions.InvalidUserOperationException;
 import com.belife.partial_maturity_backend.exceptions.UserNotFoundException;
 import com.belife.partial_maturity_backend.exceptions.UsernameAlreadyExistsException;
 import com.belife.partial_maturity_backend.mappers.AppUserMapper;
 import com.belife.partial_maturity_backend.repositories.AppUserRepository;
+import com.belife.partial_maturity_backend.services.AuditService;
 import com.belife.partial_maturity_backend.services.UserService;
+import com.belife.partial_maturity_backend.services.models.AuditRecordCommand;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -19,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Implémente l'administration des comptes.
@@ -33,6 +38,7 @@ public class UserServiceImpl implements UserService {
     private final AppUserRepository appUserRepository;
     private final AppUserMapper appUserMapper;
     private final PasswordEncoder passwordEncoder;
+    private final AuditService auditService;
 
     @Override
     @Transactional(readOnly = true)
@@ -45,11 +51,12 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * Crée un compte avec un identifiant normalisé en minuscules.
+     * Crée un compte avec un identifiant normalisé
+     * et enregistre l'action dans le journal d'audit.
      */
     @Override
     @Transactional
-    public UserResponse createUser( CreateUserRequest request ) {
+    public UserResponse createUser( CreateUserRequest request, String currentUsername ) {
         String normalizedUsername = normalizeUsername(request.username());
 
         if ( appUserRepository.existsByUsernameIgnoreCase( normalizedUsername ) ) {
@@ -64,7 +71,32 @@ public class UserServiceImpl implements UserService {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setActive(true);
 
-        AppUserEntity savedUser = appUserRepository.save(user);
+        AppUserEntity savedUser = appUserRepository.saveAndFlush(user);
+
+        auditService.record(
+            new AuditRecordCommand(
+                AuditEventType.USER_CREATED,
+                AuditResourceType.USER,
+                savedUser.getId().toString(),
+                null,
+                currentUsername,
+                "Création du compte utilisateur "
+                        + savedUser.getUsername()
+                        + ".",
+                Map.of(
+                    "userId",
+                    savedUser.getId(),
+                    "username",
+                    savedUser.getUsername(),
+                    "fullName",
+                    savedUser.getFullName(),
+                    "role",
+                    savedUser.getRole().name(),
+                    "active",
+                    savedUser.isActive()
+                )
+            )
+        );
 
         return appUserMapper.toResponse(savedUser);
     }
@@ -130,19 +162,45 @@ public class UserServiceImpl implements UserService {
             protectLastActiveAdmin(user);
         }
 
-        String normalizedFullName =
-                request.fullName().trim();
+        String normalizedFullName = request.fullName().trim();
 
         user.setFullName(normalizedFullName);
         user.setRole(requestedRole);
 
         /*
-         * saveAndFlush force l'envoi immédiat de la mise à jour
-         * à SQL Server. Cela permet également de récupérer les
-         * métadonnées JPA Auditing avant de construire la réponse.
-         */
-        AppUserEntity updatedUser =
-                appUserRepository.saveAndFlush(user);
+        * mémorise les anciennes valeurs avant modification
+        */
+        String previousFullName = user.getFullName();
+        UserRole previousRole = user.getRole();
+
+        AppUserEntity updatedUser = appUserRepository.saveAndFlush(user);
+
+        auditService.record(
+            new AuditRecordCommand(
+                AuditEventType.USER_UPDATED,
+                AuditResourceType.USER,
+                updatedUser.getId().toString(),
+                null,
+                currentUsername,
+                "Modification du compte utilisateur "
+                        + updatedUser.getUsername()
+                        + ".",
+                Map.of(
+                    "userId",
+                    updatedUser.getId(),
+                    "username",
+                    updatedUser.getUsername(),
+                    "previousFullName",
+                    previousFullName,
+                    "newFullName",
+                    updatedUser.getFullName(),
+                    "previousRole",
+                    previousRole.name(),
+                    "newRole",
+                    updatedUser.getRole().name()
+                )
+            )
+        );
 
         return appUserMapper.toResponse(updatedUser);
     }
@@ -173,6 +231,41 @@ public class UserServiceImpl implements UserService {
         user.setActive(requestedActiveStatus);
 
         AppUserEntity updatedUser = appUserRepository.saveAndFlush(user);
+
+        /*
+        Après la sauvegarde, détermine l’événement
+         */
+        AuditEventType auditEventType =
+            updatedUser.isActive()
+                ? AuditEventType.USER_ACTIVATED
+                : AuditEventType.USER_DEACTIVATED;
+
+        auditService.record(
+            new AuditRecordCommand(
+                auditEventType,
+                AuditResourceType.USER,
+                updatedUser.getId().toString(),
+                null,
+                currentUsername,
+                updatedUser.isActive()
+                    ? "Activation du compte utilisateur "
+                      + updatedUser.getUsername()
+                      + "."
+                    : "Désactivation du compte utilisateur "
+                      + updatedUser.getUsername()
+                      + ".",
+                Map.of(
+                    "userId",
+                    updatedUser.getId(),
+                    "username",
+                    updatedUser.getUsername(),
+                    "active",
+                    updatedUser.isActive(),
+                    "role",
+                    updatedUser.getRole().name()
+                )
+            )
+        );
 
         return appUserMapper.toResponse(updatedUser);
     }

@@ -1,6 +1,5 @@
 package com.belife.partial_maturity_backend.dtos.responses;
 
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -10,6 +9,10 @@ import java.util.List;
  *
  * @param policyNumber numéro de police
  * @param calculationDate date métier du calcul
+ * @param interestEndDate date de fin de production des intérêts
+ * @param interestAccrualClosed indique si la production
+ *                              d'intérêts est clôturée à la date
+ *                              du calcul
  * @param annualRate taux annuel utilisé
  * @param completedCycles nombre total de cycles appliqués
  * @param openCapital capital ouvert depuis le dernier paiement
@@ -20,6 +23,8 @@ import java.util.List;
 public record InterestSimulationResponse(
         String policyNumber,
         LocalDate calculationDate,
+        LocalDate interestEndDate,
+        boolean interestAccrualClosed,
         BigDecimal annualRate,
         long completedCycles,
         BigDecimal openCapital,

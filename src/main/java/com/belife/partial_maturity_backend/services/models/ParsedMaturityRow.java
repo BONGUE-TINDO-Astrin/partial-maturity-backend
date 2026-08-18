@@ -12,13 +12,15 @@ import java.time.LocalDate;
  * @param maturityRank rang numérique extrait du type
  * @param maturityDate date de maturité
  * @param maturityAmount montant de maturité
+ * @param interestEndDate date de fin de production des intérêts
  */
 public record ParsedMaturityRow(
-    int rowNumber,
-    String policyNumber,
-    String maturityType,
-    int maturityRank,
-    LocalDate maturityDate,
-    BigDecimal maturityAmount
+        int rowNumber,
+        String policyNumber,
+        String maturityType,
+        int maturityRank,
+        LocalDate maturityDate,
+        BigDecimal maturityAmount,
+        LocalDate interestEndDate
 ) {
 }

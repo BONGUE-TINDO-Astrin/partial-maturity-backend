@@ -17,7 +17,7 @@ public final class FinancialAmountUtils {
     /**
      * Nombre de chiffres conservés après la virgule.
      */
-    public static final int FINANCIAL_SCALE = 6;
+    public static final int FINANCIAL_SCALE = 2;
 
     /**
      * Mode d'arrondi métier retenu pour le MVP.

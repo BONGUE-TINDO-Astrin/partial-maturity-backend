@@ -18,9 +18,13 @@ public interface UserService {
     List<UserResponse> getAllUsers();
 
     /**
-     * Crée un compte avec un seul rôle.
+     * Crée un compte et enregistre l'action dans le journal d'audit.
+     *
+     * @param request données du nouveau compte
+     * @param currentUsername administrateur réalisant l'opération
+     * @return compte créé
      */
-    UserResponse createUser(CreateUserRequest request);
+    UserResponse createUser(CreateUserRequest request, String currentUsername);
 
     /**
      * Modifie le nom complet et le rôle d'un compte.

@@ -9,8 +9,13 @@ import java.util.List;
 /**
  * Détail complet d'un chargement CSV.
  *
- * <p>Pour un lot rejeté, errors contient les erreurs
- * structurées reconstituées depuis errorSummary.</p>
+ * <p>Pour un lot rejeté, {@code errors} contient
+ * les erreurs structurées reconstituées depuis
+ * {@code errorSummary}.</p>
+ *
+ * <p>Pour un lot annulé, les informations de réversion
+ * expliquent quand, par qui et pour quelle raison
+ * les maturités ont été retirées.</p>
  */
 public record ImportBatchDetailResponse(
         Long id,
@@ -24,10 +29,19 @@ public record ImportBatchDetailResponse(
         ImportBatchStatus status,
         Instant importedAt,
         String importedBy,
+        Instant reversedAt,
+        String reversedBy,
+        String reversalReason,
+        boolean reversible,
+        String reversalBlockedReason,
         Instant createdAt,
         String createdBy,
         Instant updatedAt,
         String updatedBy,
         List<CsvValidationError> errors
 ) {
+
+    public ImportBatchDetailResponse {
+        errors = List.copyOf(errors);
+    }
 }

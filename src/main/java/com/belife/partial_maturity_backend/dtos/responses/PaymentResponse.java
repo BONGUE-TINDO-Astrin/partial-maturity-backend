@@ -9,6 +9,11 @@ import java.util.List;
 
 /**
  * Représente un paiement total et sa justification.
+ *
+ * @param cancellable indique si le paiement peut actuellement
+ *                    être annulé
+ * @param cancellationBlockedReason raison métier lorsque
+ *                                  l'annulation est impossible
  */
 public record PaymentResponse(
         Long id,
@@ -29,6 +34,8 @@ public record PaymentResponse(
         Instant updatedAt,
         String updatedBy,
         Long version,
+        boolean cancellable,
+        String cancellationBlockedReason,
         List<PaymentDetailResponse> details
 ) {
 

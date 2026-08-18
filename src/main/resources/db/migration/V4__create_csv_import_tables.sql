@@ -6,6 +6,7 @@
  * - un fichier chargé correspond à un IMPORT_BATCH ;
  * - une maturité est identifiée par la police et son rang ;
  * - aucune ligne de maturité n'est supprimée physiquement ;
+ * - les dates métier utilisent DATE ;
  * - les dates techniques utilisent DATETIMEOFFSET(7).
  */
 
@@ -63,9 +64,9 @@ CREATE TABLE partial_maturity.import_batch
     CONSTRAINT ck_import_batch_status
         CHECK (
             status_code IN (
-                    'PROCESSING',
-                    'IMPORTED',
-                    'REJECTED'
+                            'PROCESSING',
+                            'IMPORTED',
+                            'REJECTED'
                 )
             ),
 
@@ -112,6 +113,12 @@ CREATE TABLE partial_maturity.policy_maturity
 
     maturity_amount DECIMAL(19,6) NOT NULL,
 
+    /*
+     * Date métier après laquelle aucun nouvel intérêt
+     * ne doit être produit pour la police.
+     */
+    interest_end_date DATE NOT NULL,
+
     source_row_number INT NOT NULL,
 
     created_at DATETIMEOFFSET(7) NOT NULL
@@ -141,6 +148,13 @@ CREATE TABLE partial_maturity.policy_maturity
     CONSTRAINT ck_policy_maturity_amount
         CHECK (maturity_amount > 0),
 
+    /*
+     * Une maturité peut intervenir le jour de la clôture,
+     * mais jamais après la fin de production des intérêts.
+     */
+    CONSTRAINT ck_policy_maturity_interest_period
+        CHECK (maturity_date <= interest_end_date),
+
     CONSTRAINT ck_policy_maturity_source_row
         CHECK (source_row_number >= 2),
 
@@ -149,23 +163,23 @@ CREATE TABLE partial_maturity.policy_maturity
      * pour un rang déterminé.
      */
     CONSTRAINT uq_policy_maturity_policy_rank
-        UNIQUE (
-            policy_number,
-            maturity_rank
-        )
+        UNIQUE (policy_number, maturity_rank)
 );
 GO
 
 
 CREATE INDEX ix_policy_maturity_policy_date
-    ON partial_maturity.policy_maturity(
-        policy_number,
-        maturity_date
-    );
+    ON partial_maturity.policy_maturity(policy_number, maturity_date);
 GO
 
 CREATE INDEX ix_policy_maturity_import_batch
-    ON partial_maturity.policy_maturity(
-        import_batch_id
-    );
+    ON partial_maturity.policy_maturity(import_batch_id);
+GO
+
+/*
+ * Cet index facilitera la future liste financière des polices
+ * et les contrôles de cohérence de la date de fin des intérêts.
+ */
+CREATE INDEX ix_policy_maturity_policy_interest_end
+    ON partial_maturity.policy_maturity( policy_number, interest_end_date);
 GO

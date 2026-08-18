@@ -20,8 +20,13 @@ public interface InterestCalculationEngine {
      * Calcule la situation financière à partir d'événements
      * chronologiques.
      *
+     * <p>Les intérêts sont produits uniquement jusqu'à la date
+     * de fin configurée pour la police. Les paiements intervenant
+     * après cette date restent néanmoins appliqués à la situation.</p>
+     *
      * @param policyNumber numéro de police
      * @param calculationDate date métier de simulation
+     * @param interestEndDate date de fin de production des intérêts
      * @param annualRate taux annuel fixe
      * @param events maturités et paiements à traiter
      * @return résultat détaillé de la simulation
@@ -29,6 +34,7 @@ public interface InterestCalculationEngine {
     InterestSimulationResponse calculate(
             String policyNumber,
             LocalDate calculationDate,
+            LocalDate interestEndDate,
             BigDecimal annualRate,
             List<CalculationEvent> events
     );

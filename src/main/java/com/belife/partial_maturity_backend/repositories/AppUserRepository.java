@@ -22,4 +22,14 @@ public interface AppUserRepository extends JpaRepository<AppUserEntity, Long> {
      * Permet de protéger le dernier compte administrateur actif.
      */
     long countByRoleAndActiveTrue(UserRole role);
+
+    /**
+     * Compte les utilisateurs selon leur statut.
+     */
+    long countByActive(boolean active);
+
+    /**
+     * Compte les utilisateurs actifs possédant un rôle donné.
+     */
+    long countByRoleAndActive(UserRole role, boolean active);
 }

@@ -239,4 +239,73 @@ public class GlobalExceptionHandler {
                 List.of()
         );
     }
+
+    /**
+     * Retourne HTTP 404 lorsqu'une entrée d'audit
+     * n'existe pas.
+     */
+    @ExceptionHandler(AuditLogNotFoundException.class)
+    public ResponseEntity<Map<String, Object>>
+    handleAuditLogNotFound(
+            AuditLogNotFoundException exception
+    ) {
+        return buildResponse(
+                HttpStatus.NOT_FOUND,
+                "AUDIT_LOG_NOT_FOUND",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(InvalidAuditFilterException.class)
+    public ResponseEntity<Map<String, Object>>
+    handleInvalidAuditFilter(
+            InvalidAuditFilterException exception
+    ) {
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_AUDIT_FILTER",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    /**
+     * Retourne HTTP 409 lorsqu'un chargement existe,
+     * mais que son état ou ses dépendances empêchent
+     * sa réversion.
+     */
+    @ExceptionHandler(
+            ImportBatchReversalNotAllowedException.class
+    )
+    public ResponseEntity<Map<String, Object>>
+    handleImportBatchReversalNotAllowed(
+            ImportBatchReversalNotAllowedException exception
+    ) {
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                "IMPORT_BATCH_REVERSAL_NOT_ALLOWED",
+                exception.getMessage(),
+                List.of()
+        );
+    }
+
+    /**
+     * Retourne HTTP 409 lorsqu'une autre opération
+     * modifie simultanément le lot ou une police concernée.
+     */
+    @ExceptionHandler(
+            ConcurrentImportBatchOperationException.class
+    )
+    public ResponseEntity<Map<String, Object>>
+    handleConcurrentImportBatchOperation(
+            ConcurrentImportBatchOperationException exception
+    ) {
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                "CONCURRENT_IMPORT_BATCH_OPERATION",
+                exception.getMessage(),
+                List.of()
+        );
+    }
 }

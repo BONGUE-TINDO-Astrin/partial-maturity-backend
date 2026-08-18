@@ -7,64 +7,85 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 /**
  * Accès aux maturités enregistrées.
- *
- * <p>Les méthodes de ce repository sont utilisées pour :</p>
- *
- * <ul>
- *     <li>consulter l'historique d'une police ;</li>
- *     <li>détecter les maturités déjà connues ;</li>
- *     <li>contrôler la continuité des rangs ;</li>
- *     <li>détecter les contradictions entre plusieurs fichiers.</li>
- * </ul>
  */
 public interface PolicyMaturityRepository extends JpaRepository<PolicyMaturityEntity, Long> {
 
-    Optional<PolicyMaturityEntity>
-    findByPolicyNumberIgnoreCaseAndMaturityRank(String policyNumber, int maturityRank);
+    Optional<PolicyMaturityEntity> findByPolicyNumberIgnoreCaseAndMaturityRank(
+            String policyNumber,
+            int maturityRank
+    );
 
-    List<PolicyMaturityEntity>
-    findAllByPolicyNumberIgnoreCaseOrderByMaturityRankAsc(String policyNumber);
+    List<PolicyMaturityEntity> findAllByPolicyNumberIgnoreCaseOrderByMaturityRankAsc(String policyNumber);
 
     /**
-     * Charge en une seule requête les maturités des polices
-     * présentes dans le fichier à importer.
+     * Charge en une seule requête les maturités
+     * des polices présentes dans un import.
      */
     List<PolicyMaturityEntity> findAllByPolicyNumberIn(Collection<String> policyNumbers);
 
     /**
-     * Retourne les maturités enregistrées par un lot donné.
+     * Retourne toutes les maturités nécessaires
+     * à la synthèse financière des polices.
      *
-     * @param importBatchId identifiant du chargement
-     * @return maturités classées par police puis par rang
+     * <p>Le classement rend le regroupement en mémoire
+     * prévisible et conserve l'ordre métier des rangs.</p>
      */
-    List<PolicyMaturityEntity>
-    findAllByImportBatchIdOrderByPolicyNumberAscMaturityRankAsc(Long importBatchId);
+    List<PolicyMaturityEntity> findAllByOrderByPolicyNumberAscMaturityRankAsc();
+
+    List<PolicyMaturityEntity> findAllByImportBatchIdOrderByPolicyNumberAscMaturityRankAsc(Long importBatchId);
 
     /**
      * Verrouille les maturités d'une police pendant
      * l'enregistrement d'un paiement.
-     *
-     * <p>Tous les traitements de paiement d'une même police
-     * doivent acquérir ce verrou avant de recalculer.</p>
-     *
-     * <p>Le second traitement concurrent attendra la fin du premier,
-     * puis recalculera la situation avec le paiement fraîchement
-     * enregistré. Si la situation est déjà soldée, le second paiement
-     * sera refusé.</p>
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
-        select maturity
-        from PolicyMaturityEntity maturity
-        where upper(maturity.policyNumber)
-              = upper(:policyNumber)
-        order by maturity.maturityRank asc
-        """)
-    List<PolicyMaturityEntity> findAllByPolicyNumberForPaymentUpdate(@Param("policyNumber") String policyNumber);
+            select maturity
+            from PolicyMaturityEntity maturity
+            where upper(maturity.policyNumber)
+                = upper(:policyNumber)
+            order by maturity.maturityRank asc
+            """)
+    List<PolicyMaturityEntity>
+    findAllByPolicyNumberForPaymentUpdate(
+            @Param("policyNumber")
+            String policyNumber
+    );
+
+    @Query("""
+            select count(
+                distinct maturity.policyNumber
+            )
+            from PolicyMaturityEntity maturity
+            """)
+    long countDistinctPolicyNumbers();
+
+    @Query("""
+            select coalesce(
+                sum(maturity.maturityAmount),
+                0
+            )
+            from PolicyMaturityEntity maturity
+            """)
+    BigDecimal sumAllMaturityAmounts();
+
+    @Query("""
+            select min(maturity.maturityDate)
+            from PolicyMaturityEntity maturity
+            """)
+    LocalDate findMinimumMaturityDate();
+
+    @Query("""
+            select max(maturity.maturityDate)
+            from PolicyMaturityEntity maturity
+            """)
+    LocalDate findMaximumMaturityDate();
 }
