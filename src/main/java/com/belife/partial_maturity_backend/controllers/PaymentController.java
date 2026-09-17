@@ -72,7 +72,7 @@ public class PaymentController {
      * Annule un paiement valide.
      */
     @PostMapping("/payments/{paymentId}/cancel")
-    @PreAuthorize("hasRole('COMPTABILITE')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PaymentResponse>
     cancelPayment(
             @PathVariable Long paymentId,

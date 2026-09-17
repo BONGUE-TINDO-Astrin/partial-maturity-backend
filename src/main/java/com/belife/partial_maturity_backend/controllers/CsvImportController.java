@@ -54,10 +54,7 @@ public class CsvImportController {
      * <p>Cette opération modifie les données des polices
      * et reste donc réservée à ADMIN.</p>
      */
-    @PostMapping(
-            value = "/csv",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
-    )
+    @PostMapping(value = "/csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CsvImportResponse> importCsv(
             @RequestPart("file")
             MultipartFile file,
@@ -77,9 +74,7 @@ public class CsvImportController {
      * Retourne l'historique paginé des chargements.
      */
     @GetMapping
-    public ResponseEntity<
-            PageResponse<ImportBatchSummaryResponse>
-            > getImportHistory(
+    public ResponseEntity<PageResponse<ImportBatchSummaryResponse>> getImportHistory(
             @RequestParam(defaultValue = "0")
             int page,
 
@@ -94,10 +89,7 @@ public class CsvImportController {
      */
     @GetMapping("/{batchId}")
     public ResponseEntity<ImportBatchDetailResponse>
-    getImportDetail(
-            @PathVariable
-            Long batchId
-    ) {
+    getImportDetail(@PathVariable Long batchId) {
         return ResponseEntity.ok(importHistoryService.getImportDetail(batchId));
     }
 
@@ -109,9 +101,7 @@ public class CsvImportController {
      * est vide.</p>
      */
     @GetMapping("/{batchId}/maturities")
-    public ResponseEntity<
-            List<PolicyMaturityResponse>
-            > getImportedMaturities(
+    public ResponseEntity<List<PolicyMaturityResponse>> getImportedMaturities(
             @PathVariable
             Long batchId
     ) {
@@ -130,8 +120,6 @@ public class CsvImportController {
      *     <li>les dates restantes demeurent cohérentes.</li>
      * </ul>
      *
-     * <p>Le chargement reste visible dans l'historique
-     * avec le statut REVERSED.</p>
      */
     @PostMapping("/{batchId}/reverse")
     public ResponseEntity<ImportBatchDetailResponse>
@@ -146,12 +134,7 @@ public class CsvImportController {
             Authentication authentication
     ) {
         return ResponseEntity.ok(
-                importBatchReversalService
-                        .reverseImportBatch(
-                                batchId,
-                                request,
-                                authentication.getName()
-                        )
+                importBatchReversalService.reverseImportBatch(batchId, request, authentication.getName())
         );
     }
 }

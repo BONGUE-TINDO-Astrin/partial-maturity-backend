@@ -25,8 +25,6 @@ public record AuditLogDetailResponse(
 ) {
 
     public AuditLogDetailResponse {
-        details = details == null
-                ? Map.of()
-                : Map.copyOf(details);
+        details = details == null ? Map.of() : Map.copyOf(details);
     }
 }

@@ -12,9 +12,7 @@ import java.time.Clock;
  * et de l'horloge technique de l'application.
  */
 @Configuration
-@EnableConfigurationProperties(
-        InterestProperties.class
-)
+@EnableConfigurationProperties(InterestProperties.class)
 public class InterestCalculationConfig {
 
     /**

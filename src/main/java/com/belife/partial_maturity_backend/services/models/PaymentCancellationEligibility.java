@@ -13,18 +13,10 @@ public record PaymentCancellationEligibility(
 ) {
 
     public static PaymentCancellationEligibility allowed() {
-        return new PaymentCancellationEligibility(
-                true,
-                null
-        );
+        return new PaymentCancellationEligibility(true, null);
     }
 
-    public static PaymentCancellationEligibility blocked(
-            String reason
-    ) {
-        return new PaymentCancellationEligibility(
-                false,
-                reason
-        );
+    public static PaymentCancellationEligibility blocked(String reason) {
+        return new PaymentCancellationEligibility(false, reason);
     }
 }

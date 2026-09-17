@@ -23,13 +23,13 @@ public interface AppUserRepository extends JpaRepository<AppUserEntity, Long> {
      */
     long countByRoleAndActiveTrue(UserRole role);
 
-    /**
-     * Compte les utilisateurs selon leur statut.
-     */
-    long countByActive(boolean active);
+//    /**
+//     * Compte les utilisateurs selon leur statut.
+//     */
+//    long countByActive(boolean active);
 
-    /**
-     * Compte les utilisateurs actifs possédant un rôle donné.
-     */
-    long countByRoleAndActive(UserRole role, boolean active);
+//    /**
+//     * Compte les utilisateurs actifs possédant un rôle donné.
+//     */
+//    long countByRoleAndActive(UserRole role, boolean active);
 }

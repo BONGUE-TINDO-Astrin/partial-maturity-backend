@@ -59,53 +59,28 @@ public class PolicyMaturityEntity extends AuditableEntity {
     )
     private ImportBatchEntity importBatch;
 
-    @Column(
-            name = "policy_number",
-            nullable = false,
-            length = 100
-    )
+    @Column(name = "policy_number", nullable = false, length = 100)
     private String policyNumber;
 
-    @Column(
-            name = "maturity_type",
-            nullable = false,
-            length = 50
-    )
+    @Column(name = "maturity_type", nullable = false, length = 50)
     private String maturityType;
 
-    @Column(
-            name = "maturity_rank",
-            nullable = false
-    )
+    @Column(name = "maturity_rank", nullable = false)
     private int maturityRank;
 
-    @Column(
-            name = "maturity_date",
-            nullable = false
-    )
+    @Column(name = "maturity_date", nullable = false)
     private LocalDate maturityDate;
 
-    @Column(
-            name = "maturity_amount",
-            nullable = false,
-            precision = 19,
-            scale = 6
-    )
+    @Column(name = "maturity_amount", nullable = false, precision = 19, scale = 6)
     private BigDecimal maturityAmount;
 
     /**
      * Date métier après laquelle aucun nouvel intérêt
      * ne doit être produit pour la police.
      */
-    @Column(
-            name = "interest_end_date",
-            nullable = false
-    )
+    @Column(name = "interest_end_date", nullable = false)
     private LocalDate interestEndDate;
 
-    @Column(
-            name = "source_row_number",
-            nullable = false
-    )
+    @Column(name = "source_row_number", nullable = false)
     private int sourceRowNumber;
 }

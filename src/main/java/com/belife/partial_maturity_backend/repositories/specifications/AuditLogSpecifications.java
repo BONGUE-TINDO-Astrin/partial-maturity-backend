@@ -35,9 +35,7 @@ public final class AuditLogSpecifications {
     }
 
     public static Specification<AuditLogEntity>
-    hasResourceType(
-            AuditResourceType resourceType
-    ) {
+    hasResourceType(AuditResourceType resourceType) {
         return (root, query, builder) -> {
             if (resourceType == null) {
                 return builder.conjunction();
@@ -57,8 +55,7 @@ public final class AuditLogSpecifications {
 
             String normalizedActor = actorUsername.trim().toLowerCase(Locale.ROOT);
 
-            return builder.equal(
-                builder.lower(root.get("actorUsername")),
+            return builder.equal(builder.lower(root.get("actorUsername")),
                 normalizedActor
             );
         };

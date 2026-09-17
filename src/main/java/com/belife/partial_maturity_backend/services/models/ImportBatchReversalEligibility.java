@@ -13,16 +13,10 @@ public record ImportBatchReversalEligibility(
 ) {
 
     public static ImportBatchReversalEligibility allowed() {
-        return new ImportBatchReversalEligibility(
-                true,
-                null
-        );
+        return new ImportBatchReversalEligibility(true, null);
     }
 
     public static ImportBatchReversalEligibility blocked(String reason) {
-        return new ImportBatchReversalEligibility(
-                false,
-                reason
-        );
+        return new ImportBatchReversalEligibility(false, reason);
     }
 }

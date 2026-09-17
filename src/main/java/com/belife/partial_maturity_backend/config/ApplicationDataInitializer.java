@@ -75,27 +75,19 @@ public class ApplicationDataInitializer implements CommandLineRunner {
      */
     private void validateBootstrapProperties() {
         if (adminUsername == null || adminUsername.isBlank()) {
-            throw new IllegalStateException(
-                    "BOOTSTRAP_ADMIN_USERNAME est obligatoire."
-            );
+            throw new IllegalStateException("BOOTSTRAP_ADMIN_USERNAME est obligatoire.");
         }
 
         if (adminPassword == null || adminPassword.isBlank()) {
-            throw new IllegalStateException(
-                    "BOOTSTRAP_ADMIN_PASSWORD est obligatoire."
-            );
+            throw new IllegalStateException("BOOTSTRAP_ADMIN_PASSWORD est obligatoire.");
         }
 
         if (adminPassword.length() < 8) {
-            throw new IllegalStateException(
-                    "BOOTSTRAP_ADMIN_PASSWORD doit contenir au moins 12 caractères."
-            );
+            throw new IllegalStateException("BOOTSTRAP_ADMIN_PASSWORD doit contenir au moins 12 caractères.");
         }
 
         if (adminFullName == null || adminFullName.isBlank()) {
-            throw new IllegalStateException(
-                    "BOOTSTRAP_ADMIN_FULL_NAME est obligatoire."
-            );
+            throw new IllegalStateException("BOOTSTRAP_ADMIN_FULL_NAME est obligatoire.");
         }
     }
 

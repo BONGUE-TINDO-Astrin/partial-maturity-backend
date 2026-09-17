@@ -20,4 +20,7 @@ public record CsvImportResponse(
         Instant processedAt,
         List<CsvValidationError> errors
 ) {
+//    public CsvImportResponse {
+//        errors = List.copyOf(errors);
+//    }
 }

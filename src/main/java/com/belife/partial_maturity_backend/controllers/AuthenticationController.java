@@ -26,9 +26,7 @@ public class AuthenticationController {
      */
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login( @Valid @RequestBody LoginRequest request ) {
-        return ResponseEntity.
-            ok( authenticationService.login(request)
-        );
+        return ResponseEntity.ok( authenticationService.login(request));
     }
 
     /**
@@ -37,9 +35,7 @@ public class AuthenticationController {
     @GetMapping("/me")
     public ResponseEntity<CurrentUserResponse> getCurrentUser(Authentication authentication) {
         return ResponseEntity.ok(
-            authenticationService.getCurrentUser(
-                authentication.getName()
-            )
+            authenticationService.getCurrentUser(authentication.getName())
         );
     }
 }

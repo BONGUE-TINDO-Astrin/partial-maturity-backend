@@ -27,13 +27,10 @@ public record DashboardResponse(
 ) {
 
     public DashboardResponse {
-        monthlyPayments =
-                List.copyOf(monthlyPayments);
+        monthlyPayments = List.copyOf(monthlyPayments);
 
-        recentImports =
-                List.copyOf(recentImports);
+        recentImports = List.copyOf(recentImports);
 
-        recentPayments =
-                List.copyOf(recentPayments);
+        recentPayments = List.copyOf(recentPayments);
     }
 }

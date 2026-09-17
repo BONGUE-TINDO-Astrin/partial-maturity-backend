@@ -67,10 +67,7 @@ public class CsvImportServiceImpl implements CsvImportService {
     private final CsvImportPersistenceService persistenceService;
 
     @Override
-    public CsvImportResponse importFile(
-            MultipartFile file,
-            String currentUsername
-    ) {
+    public CsvImportResponse importFile(MultipartFile file, String currentUsername) {
         String fileName = resolveFileName(file);
 
         long fileSize = resolveFileSize(file);
@@ -93,10 +90,7 @@ public class CsvImportServiceImpl implements CsvImportService {
                     );
         }
 
-        MaturityImportAnalysis analysis =
-                analyzeAgainstDatabase(
-                        parsingResult.rows()
-                );
+        MaturityImportAnalysis analysis = analyzeAgainstDatabase(parsingResult.rows());
 
         if (!analysis.isValid()) {
             return persistenceService
@@ -200,18 +194,10 @@ public class CsvImportServiceImpl implements CsvImportService {
 
         List<ParsedMaturityRow> newRows = new ArrayList<>();
 
-        for (
-                ParsedMaturityRow incomingRow
-                : uniqueIncomingRows
-        ) {
-            String normalizedPolicyNumber =
-                    normalizePolicyNumber(
-                            incomingRow.policyNumber()
-                    );
+        for (ParsedMaturityRow incomingRow : uniqueIncomingRows) {
+            String normalizedPolicyNumber = normalizePolicyNumber(incomingRow.policyNumber());
 
-            LocalDate existingInterestEndDate =
-                    existingInterestEndDateByPolicy
-                            .get(normalizedPolicyNumber);
+            LocalDate existingInterestEndDate = existingInterestEndDateByPolicy.get(normalizedPolicyNumber);
 
             /*
              * La date de fin des intérêts est fixée lors
@@ -223,12 +209,7 @@ public class CsvImportServiceImpl implements CsvImportService {
                             incomingRow.interestEndDate()
                     )
             ) {
-                errors.add(
-                        inconsistentInterestEndDateError(
-                                incomingRow,
-                                existingInterestEndDate
-                        )
-                );
+                errors.add(inconsistentInterestEndDateError(incomingRow, existingInterestEndDate));
 
                 continue;
             }
@@ -239,8 +220,7 @@ public class CsvImportServiceImpl implements CsvImportService {
                             incomingRow.maturityRank()
                     );
 
-            PolicyMaturityEntity existing =
-                    existingByKey.get(key);
+            PolicyMaturityEntity existing = existingByKey.get(key);
 
             /*
              * Une maturité déjà enregistrée à l'identique
@@ -344,14 +324,8 @@ public class CsvImportServiceImpl implements CsvImportService {
                 interestEndDateByPolicy =
                 new HashMap<>();
 
-        for (
-                PolicyMaturityEntity maturity
-                : existingMaturities
-        ) {
-            String normalizedPolicyNumber =
-                    normalizePolicyNumber(
-                            maturity.getPolicyNumber()
-                    );
+        for (PolicyMaturityEntity maturity : existingMaturities) {
+            String normalizedPolicyNumber = normalizePolicyNumber(maturity.getPolicyNumber());
 
             LocalDate previousDate =
                     interestEndDateByPolicy
@@ -422,10 +396,7 @@ public class CsvImportServiceImpl implements CsvImportService {
      * paiement encore valide.
      */
     private CsvValidationError
-    maturityNotAfterLastPaymentError(
-            ParsedMaturityRow incomingRow,
-            LocalDate lastPaidPaymentDate
-    ) {
+    maturityNotAfterLastPaymentError(ParsedMaturityRow incomingRow, LocalDate lastPaidPaymentDate) {
         return new CsvValidationError(
                 incomingRow.rowNumber(),
                 "date_maturite",
@@ -441,10 +412,7 @@ public class CsvImportServiceImpl implements CsvImportService {
 
 
     private CsvValidationError
-    inconsistentInterestEndDateError(
-            ParsedMaturityRow incomingRow,
-            LocalDate existingInterestEndDate
-    ) {
+    inconsistentInterestEndDateError(ParsedMaturityRow incomingRow, LocalDate existingInterestEndDate) {
         return new CsvValidationError(
                 incomingRow.rowNumber(),
                 "date_fin_interets",
@@ -464,23 +432,15 @@ public class CsvImportServiceImpl implements CsvImportService {
      */
     private void validateContinuityAndDates(
             List<ParsedMaturityRow> incomingRows,
-            List<PolicyMaturityEntity>
-                    existingMaturities,
+            List<PolicyMaturityEntity> existingMaturities,
             List<CsvValidationError> errors
     ) {
         Map<String,
                 List<ChronologicalMaturity>>
-                maturitiesByPolicy =
-                new HashMap<>();
+                maturitiesByPolicy = new HashMap<>();
 
-        for (
-                PolicyMaturityEntity existing
-                : existingMaturities
-        ) {
-            String normalizedPolicy =
-                    normalizePolicyNumber(
-                            existing.getPolicyNumber()
-                    );
+        for (PolicyMaturityEntity existing : existingMaturities) {
+            String normalizedPolicy = normalizePolicyNumber(existing.getPolicyNumber());
 
             maturitiesByPolicy
                     .computeIfAbsent(

@@ -44,10 +44,7 @@ public class SecurityConfig {
     private String allowedOrigin;
 
     @Bean
-    public SecurityFilterChain securityFilterChain(
-        HttpSecurity http,
-        AuthenticationProvider authenticationProvider
-    ) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, AuthenticationProvider authenticationProvider) throws Exception {
 
         http
             .csrf(csrf -> csrf.disable())
@@ -57,9 +54,7 @@ public class SecurityConfig {
             ))
 
             .sessionManagement(session -> session
-                .sessionCreationPolicy(
-                    SessionCreationPolicy.STATELESS
-                )
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
 
             .exceptionHandling(exceptions -> exceptions
@@ -88,8 +83,11 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,"/api/v1/policies/**")
                 .hasAnyRole("ADMIN", "COMPTABILITE")
 
-                .requestMatchers(HttpMethod.POST, "/api/v1/policies/*/payments", "/api/v1/payments/*/cancel")
+                .requestMatchers(HttpMethod.POST, "/api/v1/policies/*/payments")
                 .hasRole("COMPTABILITE")
+
+                .requestMatchers(HttpMethod.POST, "/api/v1/payments/*/cancel")
+                .hasRole("ADMIN")
 
                 .requestMatchers(HttpMethod.GET, "/api/v1/policies/**", "/api/v1/payments/**")
                 .hasAnyRole("ADMIN", "COMPTABILITE")
@@ -117,8 +115,7 @@ public class SecurityConfig {
         CustomUserDetailsService userDetailsService,
         PasswordEncoder passwordEncoder
     ) {
-        DaoAuthenticationProvider provider =
-            new DaoAuthenticationProvider(userDetailsService);
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
 
         provider.setPasswordEncoder(passwordEncoder);
 
@@ -126,9 +123,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(
-        AuthenticationConfiguration configuration
-    ) throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
         return configuration.getAuthenticationManager();
     }
 
@@ -136,9 +131,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(
-            List.of(allowedOrigin)
-        );
+        configuration.setAllowedOrigins(List.of(allowedOrigin));
 
         configuration.setAllowedMethods(
             List.of(
@@ -151,27 +144,15 @@ public class SecurityConfig {
             )
         );
 
-        configuration.setAllowedHeaders(
-            List.of(
-                "Authorization",
-                "Content-Type",
-                "Accept"
-            )
-        );
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
 
-        configuration.setExposedHeaders(
-            List.of("Authorization")
-        );
+        configuration.setExposedHeaders(List.of("Authorization"));
 
         configuration.setAllowCredentials(false);
 
-        UrlBasedCorsConfigurationSource source =
-            new UrlBasedCorsConfigurationSource();
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 
-        source.registerCorsConfiguration(
-            "/**",
-            configuration
-        );
+        source.registerCorsConfiguration("/**", configuration);
 
         return source;
     }
