@@ -10,11 +10,12 @@ import java.time.LocalDate;
  *
  * @param id identifiant technique
  * @param policyNumber numéro de police
- * @param maturityType type de maturité
- * @param maturityRank rang de maturité
- * @param maturityDate date de maturité
- * @param maturityAmount montant de maturité
- * @param interestEndDate date de fin de production des intérêts
+ * @param clientName nom du client
+ * @param maturityType type généré de la maturité
+ * @param maturityRank rang attribué automatiquement
+ * @param maturityDate date métier du chargement
+ * @param maturityAmount montant de la maturité
+ * @param interestEndDate date commune de fin des intérêts
  * @param sourceRowNumber ligne d'origine dans le fichier CSV
  * @param createdAt date technique de création
  * @param createdBy utilisateur ayant créé la maturité
@@ -22,6 +23,7 @@ import java.time.LocalDate;
 public record PolicyMaturityResponse(
         Long id,
         String policyNumber,
+        String clientName,
         String maturityType,
         int maturityRank,
         LocalDate maturityDate,

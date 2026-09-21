@@ -19,14 +19,14 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Représente une maturité d'une police importée depuis un CSV.
+ * Représente une maturité d'une police importée
+ * depuis un fichier CSV.
  *
- * <p>Une police peut avoir plusieurs maturités, mais un rang
- * déterminé ne peut être enregistré qu'une seule fois.</p>
+ * <p>Le type de maturité est généré à partir du rang
+ * sous la forme {@code MATURITE_N}.</p>
  *
- * <p>La date de fin des intérêts est répétée sur chaque maturité
- * d'une même police. Le processus d'import garantit que cette date
- * reste identique pour toutes les maturités de la police.</p>
+ * <p>La date de maturité correspond à la date métier
+ * du chargement. Elle ne provient plus du fichier CSV.</p>
  */
 @Getter
 @Setter
@@ -45,42 +45,126 @@ import java.time.LocalDate;
                 )
         }
 )
-public class PolicyMaturityEntity extends AuditableEntity {
+public class PolicyMaturityEntity
+        extends AuditableEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(
+            strategy = GenerationType.IDENTITY
+    )
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    /**
+     * Lot d'import ayant créé cette maturité.
+     */
+    @ManyToOne(
+            fetch = FetchType.LAZY,
+            optional = false
+    )
     @JoinColumn(
             name = "import_batch_id",
             nullable = false,
-            foreignKey = @ForeignKey(name = "fk_policy_maturity_import_batch")
+            foreignKey = @ForeignKey(
+                    name = "fk_policy_maturity_import_batch"
+            )
     )
     private ImportBatchEntity importBatch;
 
-    @Column(name = "policy_number", nullable = false, length = 100)
+    /**
+     * Numéro de police provenant du fichier CSV.
+     *
+     * <p>La valeur reste une chaîne afin de conserver
+     * les éventuels zéros initiaux.</p>
+     */
+    @Column(
+            name = "policy_number",
+            nullable = false,
+            length = 100
+    )
     private String policyNumber;
 
-    @Column(name = "maturity_type", nullable = false, length = 50)
+    /**
+     * Nom du client provenant du fichier CSV.
+     *
+     * <p>Le service d'import garantit que les lignes
+     * d'une même police utilisent un nom cohérent.</p>
+     */
+    @Column(
+            name = "client_name",
+            nullable = false,
+            length = 200
+    )
+    private String clientName;
+
+    /**
+     * Type généré automatiquement à partir du rang.
+     *
+     * <p>Exemples : {@code MATURITE_1},
+     * {@code MATURITE_2} ou {@code MATURITE_15}.</p>
+     */
+    @Column(
+            name = "maturity_type",
+            nullable = false,
+            length = 50
+    )
     private String maturityType;
 
-    @Column(name = "maturity_rank", nullable = false)
+    /**
+     * Rang séquentiel attribué automatiquement
+     * par le backend.
+     *
+     * <p>Le rang commence à 1 et ne possède aucune
+     * limite métier maximale.</p>
+     */
+    @Column(
+            name = "maturity_rank",
+            nullable = false
+    )
     private int maturityRank;
 
-    @Column(name = "maturity_date", nullable = false)
+    /**
+     * Date métier du chargement ayant créé
+     * la maturité.
+     *
+     * <p>Toutes les lignes d'un même chargement
+     * reçoivent la même date de maturité.</p>
+     */
+    @Column(
+            name = "maturity_date",
+            nullable = false
+    )
     private LocalDate maturityDate;
 
-    @Column(name = "maturity_amount", nullable = false, precision = 19, scale = 6)
+    /**
+     * Montant nominal de la maturité.
+     */
+    @Column(
+            name = "maturity_amount",
+            nullable = false,
+            precision = 19,
+            scale = 6
+    )
     private BigDecimal maturityAmount;
 
     /**
-     * Date métier après laquelle aucun nouvel intérêt
-     * ne doit être produit pour la police.
+     * Date de fin de production des intérêts.
+     *
+     * <p>Cette date reste commune à toutes les
+     * maturités d'une même police.</p>
      */
-    @Column(name = "interest_end_date", nullable = false)
+    @Column(
+            name = "interest_end_date",
+            nullable = false
+    )
     private LocalDate interestEndDate;
 
-    @Column(name = "source_row_number", nullable = false)
+    /**
+     * Numéro physique de la ligne source
+     * dans le fichier CSV.
+     */
+    @Column(
+            name = "source_row_number",
+            nullable = false
+    )
     private int sourceRowNumber;
 }

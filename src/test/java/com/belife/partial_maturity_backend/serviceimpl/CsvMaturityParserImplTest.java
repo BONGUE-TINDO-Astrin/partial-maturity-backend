@@ -17,16 +17,12 @@ import static com.belife.partial_maturity_backend.testutils.CsvTestFileFactory.c
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests unitaires du parseur CSV de maturités.
- *
- * <p>Ces tests ne démarrent pas Spring et n'accèdent pas
- * à SQL Server. Ils vérifient uniquement le contrat du fichier
- * et la conversion des données.</p>
+ * Tests unitaires du nouveau contrat CSV.
  */
 class CsvMaturityParserImplTest {
 
     private static final String VALID_HEADER =
-            "num_police;type_maturite;date_maturite;"
+            "num_police;nom_client;"
                     + "montant_maturite;date_fin_interets";
 
     private CsvMaturityParserImpl parser;
@@ -38,16 +34,15 @@ class CsvMaturityParserImplTest {
 
     @Test
     @DisplayName(
-            "Un CSV valide doit être converti sans erreur"
+            "Un fichier conforme doit être converti sans erreur"
     )
     void shouldParseValidCsv() {
         MockMultipartFile file = csv(
                 "maturites-valides.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;2030-03-15
-                00012458;MATURITE_1;2021-06-10;3000000.00;2031-06-10
-                POL003;MATURITE_1;2024-01-01;1500000.50;2034-01-01
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000.00;2030-03-15
+                00012458;Autre Client;3000000.00;2031-06-10
                 """
         );
 
@@ -55,9 +50,9 @@ class CsvMaturityParserImplTest {
                 parser.parse(file);
 
         assertThat(result.isValid()).isTrue();
-        assertThat(result.totalRows()).isEqualTo(3);
+        assertThat(result.totalRows()).isEqualTo(2);
         assertThat(result.errors()).isEmpty();
-        assertThat(result.rows()).hasSize(3);
+        assertThat(result.rows()).hasSize(2);
 
         ParsedMaturityRow firstRow =
                 result.rows().getFirst();
@@ -68,26 +63,12 @@ class CsvMaturityParserImplTest {
         assertThat(firstRow.policyNumber())
                 .isEqualTo("POL001");
 
-        assertThat(firstRow.maturityType())
-                .isEqualTo("MATURITE_1");
-
-        assertThat(firstRow.maturityRank())
-                .isEqualTo(1);
-
-        assertThat(firstRow.maturityDate())
-                .isEqualTo(
-                        LocalDate.of(
-                                2020,
-                                3,
-                                15
-                        )
-                );
+        assertThat(firstRow.clientName())
+                .isEqualTo("Client Exemple");
 
         assertThat(firstRow.maturityAmount())
                 .isEqualByComparingTo(
-                        new BigDecimal(
-                                "2500000.00"
-                        )
+                        new BigDecimal("2500000.00")
                 );
 
         assertThat(firstRow.interestEndDate())
@@ -108,8 +89,8 @@ class CsvMaturityParserImplTest {
         MockMultipartFile file = csv(
                 "police-avec-zeros.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                00012458;MATURITE_1;2021-06-10;3000000.00;2031-06-10
+                num_police;nom_client;montant_maturite;date_fin_interets
+                00012458;Client Exemple;3000000.00;2031-06-10
                 """
         );
 
@@ -127,14 +108,14 @@ class CsvMaturityParserImplTest {
 
     @Test
     @DisplayName(
-            "Un CSV UTF-8 avec BOM doit être accepté"
+            "Un fichier UTF-8 avec BOM doit être accepté"
     )
     void shouldParseUtf8CsvWithBom() {
         MockMultipartFile file = csvWithBom(
                 "maturites-avec-bom.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;2030-03-15
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000.00;2030-03-15
                 """
         );
 
@@ -143,7 +124,6 @@ class CsvMaturityParserImplTest {
 
         assertThat(result.isValid()).isTrue();
         assertThat(result.totalRows()).isEqualTo(1);
-        assertThat(result.errors()).isEmpty();
 
         assertThat(
                 result.rows()
@@ -154,14 +134,74 @@ class CsvMaturityParserImplTest {
 
     @Test
     @DisplayName(
-            "Un ordre de colonnes incorrect doit entraîner un rejet"
+            "Les colonnes obligatoires peuvent être dans un ordre différent"
     )
-    void shouldRejectInvalidHeaderOrder() {
+    void shouldAllowDifferentHeaderOrder() {
         MockMultipartFile file = csv(
-                "en-tete-invalide.csv",
+                "colonnes-reordonnees.csv",
                 """
-                type_maturite;num_police;date_maturite;montant_maturite;date_fin_interets
-                MATURITE_1;POL001;2020-03-15;2500000.00;2030-03-15
+                nom_client;date_fin_interets;num_police;montant_maturite
+                Client Exemple;2030-03-15;POL001;2500000.00
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isTrue();
+
+        ParsedMaturityRow row =
+                result.rows().getFirst();
+
+        assertThat(row.policyNumber())
+                .isEqualTo("POL001");
+
+        assertThat(row.clientName())
+                .isEqualTo("Client Exemple");
+
+        assertThat(row.maturityAmount())
+                .isEqualByComparingTo("2500000.00");
+    }
+
+    @Test
+    @DisplayName(
+            "Les colonnes supplémentaires doivent être ignorées"
+    )
+    void shouldIgnoreAdditionalColumns() {
+        MockMultipartFile file = csv(
+                "colonnes-supplementaires.csv",
+                """
+                agence;num_police;nom_client;produit;montant_maturite;date_fin_interets;observation
+                Centre;POL001;Client Exemple;Epargne;2500000.00;2030-03-15;Première tranche
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isTrue();
+        assertThat(result.rows()).hasSize(1);
+
+        ParsedMaturityRow row =
+                result.rows().getFirst();
+
+        assertThat(row.policyNumber())
+                .isEqualTo("POL001");
+
+        assertThat(row.clientName())
+                .isEqualTo("Client Exemple");
+    }
+
+    @Test
+    @DisplayName(
+            "Une colonne obligatoire absente doit entraîner un rejet"
+    )
+    void shouldRejectMissingRequiredHeader() {
+        MockMultipartFile file = csv(
+                "nom-client-absent.csv",
+                """
+                num_police;montant_maturite;date_fin_interets
+                POL001;2500000.00;2030-03-15
                 """
         );
 
@@ -175,23 +215,26 @@ class CsvMaturityParserImplTest {
                     assertThat(error.rowNumber())
                             .isEqualTo(1);
 
+                    assertThat(error.column())
+                            .isEqualTo("nom_client");
+
                     assertThat(error.code())
                             .isEqualTo(
-                                    "INVALID_HEADER"
+                                    "MISSING_REQUIRED_HEADER"
                             );
                 });
     }
 
     @Test
     @DisplayName(
-            "L'ancien en-tête sans date de fin doit être refusé"
+            "Une colonne dupliquée doit entraîner un rejet"
     )
-    void shouldRejectLegacyHeader() {
+    void shouldRejectDuplicatedHeader() {
         MockMultipartFile file = csv(
-                "ancien-format.csv",
+                "colonne-dupliquee.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite
-                POL001;MATURITE_1;2020-03-15;2500000.00
+                num_police;nom_client;nom_client;montant_maturite;date_fin_interets
+                POL001;Client A;Client A;2500000.00;2030-03-15
                 """
         );
 
@@ -202,7 +245,7 @@ class CsvMaturityParserImplTest {
 
         assertThat(result.errors())
                 .extracting("code")
-                .contains("INVALID_HEADER");
+                .contains("DUPLICATE_HEADER");
     }
 
     @Test
@@ -218,9 +261,8 @@ class CsvMaturityParserImplTest {
                         (
                                 VALID_HEADER
                                         + System.lineSeparator()
-                                        + "POL001;MATURITE_1;"
-                                        + "2020-03-15;2500000.00;"
-                                        + "2030-03-15"
+                                        + "POL001;Client Exemple;"
+                                        + "2500000.00;2030-03-15"
                         ).getBytes(
                                 StandardCharsets.UTF_8
                         )
@@ -246,7 +288,7 @@ class CsvMaturityParserImplTest {
         MockMultipartFile file = csv(
                 "fichier-vide.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
+                num_police;nom_client;montant_maturite;date_fin_interets
                 """
         );
 
@@ -263,18 +305,14 @@ class CsvMaturityParserImplTest {
 
     @Test
     @DisplayName(
-            "Les erreurs de plusieurs lignes doivent être agrégées"
+            "Le numéro de police est obligatoire"
     )
-    void shouldCollectAllRowErrors() {
+    void shouldRejectMissingPolicyNumber() {
         MockMultipartFile file = csv(
-                "maturites-invalides.csv",
+                "police-absente.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                ;MATURITE_1;2020-03-15;2500000.00;2030-03-15
-                POL002;TYPE_INCONNU;2021-06-10;3000000.00;2031-06-10
-                POL003;MATURITE_1;10/06/2021;1500000.00;2031-06-10
-                POL004;MATURITE_1;2022-01-01;-10;2032-01-01
-                POL005;MATURITE_1;2022-01-01;1000000.00;
+                num_police;nom_client;montant_maturite;date_fin_interets
+                ;Client Exemple;2500000.00;2030-03-15
                 """
         );
 
@@ -282,58 +320,24 @@ class CsvMaturityParserImplTest {
                 parser.parse(file);
 
         assertThat(result.isValid()).isFalse();
-        assertThat(result.totalRows())
-                .isEqualTo(5);
 
         assertThat(result.errors())
                 .extracting("code")
                 .contains(
-                        "MISSING_POLICY_NUMBER",
-                        "INVALID_MATURITY_TYPE",
-                        "INVALID_MATURITY_DATE",
-                        "INVALID_MATURITY_AMOUNT",
-                        "MISSING_INTEREST_END_DATE"
+                        "MISSING_POLICY_NUMBER"
                 );
     }
 
     @Test
     @DisplayName(
-            "Le type de maturité doit être normalisé en majuscules"
+            "Le nom du client est obligatoire"
     )
-    void shouldNormalizeMaturityType() {
+    void shouldRejectMissingClientName() {
         MockMultipartFile file = csv(
-                "type-minuscules.csv",
+                "client-absent.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;maturite_2;2025-03-15;2500000.00;2030-03-15
-                """
-        );
-
-        CsvValidationResult result =
-                parser.parse(file);
-
-        assertThat(result.isValid()).isTrue();
-
-        ParsedMaturityRow row =
-                result.rows().getFirst();
-
-        assertThat(row.maturityType())
-                .isEqualTo("MATURITE_2");
-
-        assertThat(row.maturityRank())
-                .isEqualTo(2);
-    }
-
-    @Test
-    @DisplayName(
-            "Un montant utilisant la virgule doit être refusé"
-    )
-    void shouldRejectCommaAsDecimalSeparator() {
-        MockMultipartFile file = csv(
-                "montant-virgule.csv",
-                """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000,50;2030-03-15
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;;2500000.00;2030-03-15
                 """
         );
 
@@ -345,27 +349,105 @@ class CsvMaturityParserImplTest {
         assertThat(result.errors())
                 .anySatisfy(error -> {
                     assertThat(error.column())
-                            .isEqualTo(
-                                    "montant_maturite"
-                            );
+                            .isEqualTo("nom_client");
 
                     assertThat(error.code())
                             .isEqualTo(
-                                    "INVALID_MATURITY_AMOUNT"
+                                    "MISSING_CLIENT_NAME"
                             );
                 });
     }
 
     @Test
     @DisplayName(
-            "Un montant à zéro doit être refusé"
+            "Le nom du client doit être normalisé"
     )
-    void shouldRejectZeroAmount() {
+    void shouldNormalizeClientNameSpaces() {
         MockMultipartFile file = csv(
-                "montant-zero.csv",
+                "client-espaces.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;0;2030-03-15
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;  Client    Exemple  ;2500000.00;2030-03-15
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isTrue();
+
+        assertThat(
+                result.rows()
+                        .getFirst()
+                        .clientName()
+        ).isEqualTo("Client Exemple");
+    }
+
+    @Test
+    @DisplayName(
+            "Une police ne peut pas avoir plusieurs noms dans un fichier"
+    )
+    void shouldRejectDifferentClientNamesForSamePolicy() {
+        MockMultipartFile file = csv(
+                "clients-incoherents.csv",
+                """
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client A;2500000.00;2030-03-15
+                POL001;Client B;3000000.00;2030-03-15
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isFalse();
+
+        assertThat(result.errors())
+                .anySatisfy(error -> {
+                    assertThat(error.rowNumber())
+                            .isEqualTo(3);
+
+                    assertThat(error.column())
+                            .isEqualTo("nom_client");
+
+                    assertThat(error.code())
+                            .isEqualTo(
+                                    "INCONSISTENT_CLIENT_NAME"
+                            );
+                });
+    }
+
+    @Test
+    @DisplayName(
+            "Les différences de casse du nom doivent être tolérées"
+    )
+    void shouldAllowClientNameCaseDifferences() {
+        MockMultipartFile file = csv(
+                "clients-casse.csv",
+                """
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000.00;2030-03-15
+                POL001;CLIENT EXEMPLE;3000000.00;2030-03-15
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isTrue();
+        assertThat(result.rows()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName(
+            "Un montant utilisant la virgule doit être refusé"
+    )
+    void shouldRejectCommaAsDecimalSeparator() {
+        MockMultipartFile file = csv(
+                "montant-virgule.csv",
+                """
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000,50;2030-03-15
                 """
         );
 
@@ -383,14 +465,14 @@ class CsvMaturityParserImplTest {
 
     @Test
     @DisplayName(
-            "Une date de fin des intérêts absente doit être refusée"
+            "Un montant nul doit être refusé"
     )
-    void shouldRejectMissingInterestEndDate() {
+    void shouldRejectZeroAmount() {
         MockMultipartFile file = csv(
-                "date-fin-absente.csv",
+                "montant-zero.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;0;2030-03-15
                 """
         );
 
@@ -400,29 +482,97 @@ class CsvMaturityParserImplTest {
         assertThat(result.isValid()).isFalse();
 
         assertThat(result.errors())
-                .anySatisfy(error -> {
-                    assertThat(error.column())
-                            .isEqualTo(
-                                    "date_fin_interets"
-                            );
-
-                    assertThat(error.code())
-                            .isEqualTo(
-                                    "MISSING_INTEREST_END_DATE"
-                            );
-                });
+                .extracting("code")
+                .contains(
+                        "INVALID_MATURITY_AMOUNT"
+                );
     }
 
     @Test
     @DisplayName(
-            "Une date de fin des intérêts mal formatée doit être refusée"
+            "Un montant négatif doit être refusé"
+    )
+    void shouldRejectNegativeAmount() {
+        MockMultipartFile file = csv(
+                "montant-negatif.csv",
+                """
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;-10;2030-03-15
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isFalse();
+
+        assertThat(result.errors())
+                .extracting("code")
+                .contains(
+                        "INVALID_MATURITY_AMOUNT"
+                );
+    }
+
+    @Test
+    @DisplayName(
+            "Un montant dépassant six décimales doit être refusé"
+    )
+    void shouldRejectAmountWithTooManyDecimals() {
+        MockMultipartFile file = csv(
+                "montant-decimales.csv",
+                """
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000.1234567;2030-03-15
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isFalse();
+
+        assertThat(result.errors())
+                .extracting("code")
+                .contains(
+                        "MATURITY_AMOUNT_SCALE_EXCEEDED"
+                );
+    }
+
+    @Test
+    @DisplayName(
+            "Une date de fin absente doit être refusée"
+    )
+    void shouldRejectMissingInterestEndDate() {
+        MockMultipartFile file = csv(
+                "date-fin-absente.csv",
+                """
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000.00;
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isFalse();
+
+        assertThat(result.errors())
+                .extracting("code")
+                .contains(
+                        "MISSING_INTEREST_END_DATE"
+                );
+    }
+
+    @Test
+    @DisplayName(
+            "Une date de fin mal formatée doit être refusée"
     )
     void shouldRejectInvalidInterestEndDate() {
         MockMultipartFile file = csv(
                 "date-fin-invalide.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;15/03/2030
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000.00;15/03/2030
                 """
         );
 
@@ -440,77 +590,15 @@ class CsvMaturityParserImplTest {
 
     @Test
     @DisplayName(
-            "Une maturité le jour de la fin des intérêts doit être acceptée"
-    )
-    void shouldAllowMaturityOnInterestEndDate() {
-        MockMultipartFile file = csv(
-                "maturite-date-fin.csv",
-                """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2030-03-15;2500000.00;2030-03-15
-                """
-        );
-
-        CsvValidationResult result =
-                parser.parse(file);
-
-        assertThat(result.isValid()).isTrue();
-        assertThat(result.errors()).isEmpty();
-
-        assertThat(
-                result.rows()
-                        .getFirst()
-                        .maturityDate()
-        ).isEqualTo(
-                result.rows()
-                        .getFirst()
-                        .interestEndDate()
-        );
-    }
-
-    @Test
-    @DisplayName(
-            "Une maturité après la fin des intérêts doit être refusée"
-    )
-    void shouldRejectMaturityAfterInterestEndDate() {
-        MockMultipartFile file = csv(
-                "maturite-apres-fin.csv",
-                """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2030-03-16;2500000.00;2030-03-15
-                """
-        );
-
-        CsvValidationResult result =
-                parser.parse(file);
-
-        assertThat(result.isValid()).isFalse();
-
-        assertThat(result.errors())
-                .anySatisfy(error -> {
-                    assertThat(error.column())
-                            .isEqualTo(
-                                    "date_maturite"
-                            );
-
-                    assertThat(error.code())
-                            .isEqualTo(
-                                    "MATURITY_AFTER_INTEREST_END_DATE"
-                            );
-                });
-    }
-
-    @Test
-    @DisplayName(
-            "Deux dates de fin différentes pour une police doivent être refusées"
+            "Une police doit conserver la même date de fin dans le fichier"
     )
     void shouldRejectDifferentInterestEndDatesForSamePolicy() {
         MockMultipartFile file = csv(
                 "dates-fin-incoherentes.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;2030-03-15
-                POL001;MATURITE_2;2021-03-15;3000000.00;2031-03-15
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000.00;2030-03-15
+                POL001;Client Exemple;3000000.00;2031-03-15
                 """
         );
 
@@ -544,84 +632,9 @@ class CsvMaturityParserImplTest {
         MockMultipartFile file = csv(
                 "dates-fin-par-police.csv",
                 """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;2030-03-15
-                POL002;MATURITE_1;2021-06-10;3000000.00;2035-06-10
-                """
-        );
-
-        CsvValidationResult result =
-                parser.parse(file);
-
-        assertThat(result.isValid()).isTrue();
-        assertThat(result.errors()).isEmpty();
-        assertThat(result.rows()).hasSize(2);
-    }
-
-    @Test
-    @DisplayName(
-            "Deux lignes contradictoires dans le même fichier doivent être refusées"
-    )
-    void shouldRejectInternalContradiction() {
-        MockMultipartFile file = csv(
-                "contradiction-interne.csv",
-                """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;2030-03-15
-                POL001;MATURITE_1;2020-03-16;2500000.00;2030-03-15
-                """
-        );
-
-        CsvValidationResult result =
-                parser.parse(file);
-
-        assertThat(result.isValid()).isFalse();
-
-        assertThat(result.errors())
-                .extracting("code")
-                .contains(
-                        "CONTRADICTORY_MATURITY"
-                );
-    }
-
-    @Test
-    @DisplayName(
-            "Une date de fin différente rend un doublon contradictoire"
-    )
-    void shouldRejectDuplicateWithDifferentInterestEndDate() {
-        MockMultipartFile file = csv(
-                "doublon-date-fin-differente.csv",
-                """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;2030-03-15
-                POL001;MATURITE_1;2020-03-15;2500000.00;2031-03-15
-                """
-        );
-
-        CsvValidationResult result =
-                parser.parse(file);
-
-        assertThat(result.isValid()).isFalse();
-
-        assertThat(result.errors())
-                .extracting("code")
-                .contains(
-                        "CONTRADICTORY_MATURITY",
-                        "INCONSISTENT_INTEREST_END_DATE"
-                );
-    }
-
-    @Test
-    @DisplayName(
-            "Deux lignes strictement identiques sont tolérées"
-    )
-    void shouldAllowStrictlyIdenticalInternalDuplicates() {
-        MockMultipartFile file = csv(
-                "doublon-identique.csv",
-                """
-                num_police;type_maturite;date_maturite;montant_maturite;date_fin_interets
-                POL001;MATURITE_1;2020-03-15;2500000.00;2030-03-15
-                POL001;MATURITE_1;2020-03-15;2500000.000000;2030-03-15
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client A;2500000.00;2030-03-15
+                POL002;Client B;3000000.00;2035-06-10
                 """
         );
 
@@ -630,6 +643,32 @@ class CsvMaturityParserImplTest {
 
         assertThat(result.isValid()).isTrue();
         assertThat(result.rows()).hasSize(2);
-        assertThat(result.errors()).isEmpty();
+    }
+
+    @Test
+    @DisplayName(
+            "Deux lignes identiques représentent deux maturités"
+    )
+    void shouldKeepIdenticalRows() {
+        MockMultipartFile file = csv(
+                "lignes-identiques.csv",
+                """
+                num_police;nom_client;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2500000.00;2030-03-15
+                POL001;Client Exemple;2500000.00;2030-03-15
+                """
+        );
+
+        CsvValidationResult result =
+                parser.parse(file);
+
+        assertThat(result.isValid()).isTrue();
+        assertThat(result.rows()).hasSize(2);
+
+        assertThat(result.rows())
+                .extracting(
+                        ParsedMaturityRow::rowNumber
+                )
+                .containsExactly(2, 3);
     }
 }

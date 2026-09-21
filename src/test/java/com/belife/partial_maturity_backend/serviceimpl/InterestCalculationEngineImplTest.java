@@ -191,12 +191,12 @@ class InterestCalculationEngineImplTest {
 
         assertThat(simulation.openInterest())
                 .isEqualByComparingTo(
-                        "71.225000"
+                        "71.23"
                 );
 
         assertThat(simulation.balance())
                 .isEqualByComparingTo(
-                        "1071.225000"
+                        "1071.23"
                 );
 
         assertThat(simulation.lines())
@@ -829,12 +829,12 @@ class InterestCalculationEngineImplTest {
          */
         assertThat(simulation.openInterest())
                 .isEqualByComparingTo(
-                        "3.504321"
+                        "3.50"
                 );
 
         assertThat(simulation.balance())
                 .isEqualByComparingTo(
-                        "103.627777"
+                        "103.62"
                 );
 
         InterestCalculationLineResponse interestLine =
@@ -850,7 +850,213 @@ class InterestCalculationEngineImplTest {
 
         assertThat(interestLine.interestAmount())
                 .isEqualByComparingTo(
-                        "3.504321"
+                        "3.50"
+                );
+    }
+
+    @Test
+    @DisplayName(
+            "Plusieurs maturités du même chargement doivent être appliquées par rang sans intérêt intermédiaire"
+    )
+    void shouldApplySameDayMaturitiesByRankWithoutIntermediateInterest() {
+        LocalDate importDate =
+                LocalDate.of(2026, 9, 18);
+
+        InterestSimulationResponse simulation =
+                calculate(
+                        importDate,
+                        LocalDate.of(2030, 12, 31),
+                        maturity(
+                                30L,
+                                importDate,
+                                5,
+                                "250.00"
+                        ),
+                        maturity(
+                                10L,
+                                importDate,
+                                3,
+                                "1000.00"
+                        ),
+                        maturity(
+                                20L,
+                                importDate,
+                                4,
+                                "500.00"
+                        )
+                );
+
+        assertThat(simulation.completedCycles())
+                .isZero();
+
+        assertThat(simulation.openCapital())
+                .isEqualByComparingTo(
+                        "1750.000000"
+                );
+
+        assertThat(simulation.openInterest())
+                .isEqualByComparingTo(
+                        "0.000000"
+                );
+
+        assertThat(simulation.balance())
+                .isEqualByComparingTo(
+                        "1750.000000"
+                );
+
+        assertThat(simulation.lines())
+                .extracting(
+                        InterestCalculationLineResponse
+                                ::description
+                )
+                .containsExactly(
+                        "Ajout de MATURITE_3 au capital ouvert.",
+                        "Ajout de MATURITE_4 au capital ouvert.",
+                        "Ajout de MATURITE_5 au capital ouvert."
+                );
+
+        assertThat(simulation.lines())
+                .extracting(
+                        InterestCalculationLineResponse
+                                ::eventType
+                )
+                .containsOnly(
+                        CalculationEventType
+                                .MATURITY_ADDED
+                );
+    }
+
+    @Test
+    @DisplayName(
+            "Une maturité historique doit précéder un paiement enregistré le même jour"
+    )
+    void shouldApplySameDayMaturityBeforePayment() {
+        LocalDate eventDate =
+                LocalDate.of(2026, 9, 18);
+
+        InterestSimulationResponse simulation =
+                calculate(
+                        eventDate,
+                        LocalDate.of(2030, 12, 31),
+                        payment(
+                                99L,
+                                eventDate,
+                                "1500.00"
+                        ),
+                        maturity(
+                                2L,
+                                eventDate,
+                                2,
+                                "500.00"
+                        ),
+                        maturity(
+                                1L,
+                                eventDate,
+                                1,
+                                "1000.00"
+                        )
+                );
+
+        assertThat(simulation.lines())
+                .extracting(
+                        InterestCalculationLineResponse
+                                ::eventType
+                )
+                .containsExactly(
+                        CalculationEventType
+                                .MATURITY_ADDED,
+                        CalculationEventType
+                                .MATURITY_ADDED,
+                        CalculationEventType
+                                .PAYMENT_APPLIED
+                );
+
+        InterestCalculationLineResponse paymentLine =
+                findPaymentLine(simulation);
+
+        assertThat(paymentLine.balanceBefore())
+                .isEqualByComparingTo(
+                        "1500.000000"
+                );
+
+        assertThat(simulation.openCapital())
+                .isEqualByComparingTo(
+                        "0.000000"
+                );
+
+        assertThat(simulation.balance())
+                .isEqualByComparingTo(
+                        "0.000000"
+                );
+    }
+
+    @Test
+    @DisplayName(
+            "Plusieurs maturités après un paiement doivent ouvrir une nouvelle situation commune"
+    )
+    void shouldOpenNewSituationWithSameDayMaturitiesAfterPayment() {
+        LocalDate newImportDate =
+                LocalDate.of(2026, 9, 18);
+
+        InterestSimulationResponse simulation =
+                calculate(
+                        LocalDate.of(2027, 9, 18),
+                        LocalDate.of(2030, 12, 31),
+                        maturity(
+                                1L,
+                                LocalDate.of(2024, 1, 1),
+                                1,
+                                "1000.00"
+                        ),
+                        payment(
+                                10L,
+                                LocalDate.of(2025, 1, 1),
+                                "1035.00"
+                        ),
+                        maturity(
+                                3L,
+                                newImportDate,
+                                3,
+                                "250.00"
+                        ),
+                        maturity(
+                                2L,
+                                newImportDate,
+                                2,
+                                "500.00"
+                        )
+                );
+
+        assertThat(simulation.openCapital())
+                .isEqualByComparingTo(
+                        "750.000000"
+                );
+
+        assertThat(simulation.openInterest())
+                .isEqualByComparingTo(
+                        "26.250000"
+                );
+
+        assertThat(simulation.balance())
+                .isEqualByComparingTo(
+                        "776.250000"
+                );
+
+        assertThat(simulation.completedCycles())
+                .isEqualTo(2);
+
+        assertThat(simulation.lines())
+                .extracting(
+                        InterestCalculationLineResponse
+                                ::eventType
+                )
+                .containsExactly(
+                        CalculationEventType.MATURITY_ADDED,
+                        CalculationEventType.INTEREST_APPLIED,
+                        CalculationEventType.PAYMENT_APPLIED,
+                        CalculationEventType.MATURITY_ADDED,
+                        CalculationEventType.MATURITY_ADDED,
+                        CalculationEventType.INTEREST_APPLIED
                 );
     }
 

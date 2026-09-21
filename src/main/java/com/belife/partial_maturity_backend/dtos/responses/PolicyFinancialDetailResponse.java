@@ -6,15 +6,11 @@ import java.util.List;
 
 /**
  * Regroupe les informations nécessaires à la consultation
- * détaillée de la situation financière d'une police.
- *
- * <p>La simulation représente la situation courante.
- * L'historique contient uniquement les paiements encore
- * valides. Les chronologies figées sont chargées à la
- * demande depuis le détail de chaque paiement.</p>
+ * financière détaillée d'une police.
  */
 public record PolicyFinancialDetailResponse(
         String policyNumber,
+        String clientName,
         int maturityCount,
         BigDecimal totalMaturityAmount,
         LocalDate firstMaturityDate,

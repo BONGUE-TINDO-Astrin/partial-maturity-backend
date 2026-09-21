@@ -7,13 +7,14 @@ import com.belife.partial_maturity_backend.enums.PaymentStatus;
 import com.belife.partial_maturity_backend.exceptions.CsvFileProcessingException;
 import com.belife.partial_maturity_backend.repositories.PaymentRepository;
 import com.belife.partial_maturity_backend.repositories.PolicyMaturityRepository;
+import com.belife.partial_maturity_backend.services.BusinessDateProvider;
 import com.belife.partial_maturity_backend.services.CsvImportPersistenceService;
 import com.belife.partial_maturity_backend.services.CsvImportService;
 import com.belife.partial_maturity_backend.services.CsvMaturityParser;
 import com.belife.partial_maturity_backend.services.models.CsvValidationError;
 import com.belife.partial_maturity_backend.services.models.CsvValidationResult;
-import com.belife.partial_maturity_backend.services.models.MaturityBusinessKey;
 import com.belife.partial_maturity_backend.services.models.MaturityImportAnalysis;
+import com.belife.partial_maturity_backend.services.models.MaturityImportRow;
 import com.belife.partial_maturity_backend.services.models.ParsedMaturityRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,39 +25,23 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Orchestre l'importation complète d'un fichier CSV de maturités.
- *
- * <p>Cette classe ne démarre volontairement aucune transaction.
- * Les écritures atomiques sont déléguées au service de
- * persistance dédié.</p>
- *
- * <p>Les étapes sont :</p>
- *
- * <ul>
- *     <li>calcul de l'empreinte du fichier ;</li>
- *     <li>parsing et validation syntaxique ;</li>
- *     <li>chargement des maturités existantes ;</li>
- *     <li>contrôles métier ;</li>
- *     <li>import transactionnel ou historisation du rejet.</li>
- * </ul>
+ * Orchestre l'importation d'un fichier CSV de maturités.
  */
 @Service
 @RequiredArgsConstructor
 public class CsvImportServiceImpl implements CsvImportService {
+
+    private static final String UNKNOWN_CLIENT_NAME =  "CLIENT NON RENSEIGNE";
 
     private final CsvMaturityParser csvMaturityParser;
 
@@ -66,17 +51,19 @@ public class CsvImportServiceImpl implements CsvImportService {
 
     private final CsvImportPersistenceService persistenceService;
 
+    private final BusinessDateProvider businessDateProvider;
+
     @Override
-    public CsvImportResponse importFile(MultipartFile file, String currentUsername) {
+    public CsvImportResponse importFile(
+            MultipartFile file,
+            String currentUsername
+    ) {
         String fileName = resolveFileName(file);
-
         long fileSize = resolveFileSize(file);
-
         String fileSha256 = calculateSha256(file);
 
-        CsvValidationResult parsingResult = csvMaturityParser.parse(file);
-
-        int parsedRowsCount = parsingResult.totalRows();
+        CsvValidationResult parsingResult =
+                csvMaturityParser.parse(file);
 
         if (!parsingResult.isValid()) {
             return persistenceService
@@ -84,13 +71,20 @@ public class CsvImportServiceImpl implements CsvImportService {
                             fileName,
                             fileSha256,
                             fileSize,
-                            parsedRowsCount,
+                            parsingResult.totalRows(),
                             parsingResult.errors(),
                             currentUsername
                     );
         }
 
-        MaturityImportAnalysis analysis = analyzeAgainstDatabase(parsingResult.rows());
+        LocalDate maturityDate =
+                businessDateProvider.currentDate();
+
+        MaturityImportAnalysis analysis =
+                analyzeAgainstDatabase(
+                        parsingResult.rows(),
+                        maturityDate
+                );
 
         if (!analysis.isValid()) {
             return persistenceService
@@ -110,40 +104,26 @@ public class CsvImportServiceImpl implements CsvImportService {
                         fileSha256,
                         fileSize,
                         parsingResult.totalRows(),
-                        analysis.existingRowsCount(),
                         analysis.newRows(),
                         currentUsername
                 );
     }
 
-    /**
-     * Compare les lignes valides du fichier aux maturités
-     * déjà enregistrées.
-     *
-     * <p>La date de fin des intérêts est une propriété stable
-     * de la police. Une valeur différente de celle déjà présente
-     * en base entraîne le rejet complet du fichier.</p>
-     */
     private MaturityImportAnalysis
-    analyzeAgainstDatabase(List<ParsedMaturityRow> parsedRows) {
-        List<CsvValidationError> errors = new ArrayList<>();
-
-        /*
-         * Une répétition strictement identique dans le même
-         * fichier est conservée une seule fois pour l'analyse
-         * et pour l'insertion.
-         */
-        InternalDeduplicationResult deduplicationResult = deduplicateInternalRows(parsedRows);
-
-        List<ParsedMaturityRow> uniqueIncomingRows = deduplicationResult.uniqueRows();
-
-        int existingRowsCount = deduplicationResult.duplicateRowsCount();
+    analyzeAgainstDatabase(
+            List<ParsedMaturityRow> parsedRows,
+            LocalDate maturityDate
+    ) {
+        List<CsvValidationError> errors =
+                new ArrayList<>();
 
         Set<String> policyNumbers =
-                uniqueIncomingRows
-                        .stream()
-                        .map(ParsedMaturityRow::policyNumber
-                        ).collect(Collectors.toSet());
+                parsedRows.stream()
+                        .map(
+                                ParsedMaturityRow
+                                        ::policyNumber
+                        )
+                        .collect(Collectors.toSet());
 
         List<PolicyMaturityEntity>
                 existingMaturities =
@@ -163,576 +143,325 @@ public class CsvImportServiceImpl implements CsvImportService {
                                   PaymentStatus.PAID
                           );
 
-        Map<String, LocalDate>
-                lastPaidPaymentDateByPolicy =
-                buildLastPaidPaymentDateIndex(
-                        paidPayments
-                );
-
-        Map<MaturityBusinessKey,
-                PolicyMaturityEntity>
-                existingByKey =
-                existingMaturities
-                        .stream()
-                        .collect(
-                                Collectors.toMap(
-                                        entity ->
-                                                MaturityBusinessKey
-                                                        .of(
-                                                                entity.getPolicyNumber(),
-                                                                entity.getMaturityRank()
-                                                        ),
-                                        Function.identity()
-                                )
-                        );
-
-        Map<String, LocalDate>
-                existingInterestEndDateByPolicy =
-                buildExistingInterestEndDateIndex(
+        Map<String, ExistingPolicyState>
+                stateByPolicy =
+                buildExistingPolicyStateIndex(
                         existingMaturities
                 );
 
-        List<ParsedMaturityRow> newRows = new ArrayList<>();
+        Map<String, LocalDate>
+                lastPaymentDateByPolicy =
+                buildLastPaymentDateIndex(
+                        paidPayments
+                );
 
-        for (ParsedMaturityRow incomingRow : uniqueIncomingRows) {
-            String normalizedPolicyNumber = normalizePolicyNumber(incomingRow.policyNumber());
+        Map<String, Integer> nextRankByPolicy =
+                buildNextRankIndex(
+                        stateByPolicy
+                );
 
-            LocalDate existingInterestEndDate = existingInterestEndDateByPolicy.get(normalizedPolicyNumber);
+        List<MaturityImportRow> newRows =
+                new ArrayList<>();
 
-            /*
-             * La date de fin des intérêts est fixée lors
-             * du premier import de la police.
-             */
-            if (
-                    existingInterestEndDate != null
-                            && !existingInterestEndDate.equals(
-                            incomingRow.interestEndDate()
-                    )
-            ) {
-                errors.add(inconsistentInterestEndDateError(incomingRow, existingInterestEndDate));
-
-                continue;
-            }
-
-            MaturityBusinessKey key =
-                    MaturityBusinessKey.of(
-                            incomingRow.policyNumber(),
-                            incomingRow.maturityRank()
+        for (ParsedMaturityRow row : parsedRows) {
+            String policyKey =
+                    normalizePolicyKey(
+                            row.policyNumber()
                     );
 
-            PolicyMaturityEntity existing = existingByKey.get(key);
+            ExistingPolicyState existingState =
+                    stateByPolicy.get(policyKey);
 
-            /*
-             * Une maturité déjà enregistrée à l'identique
-             * reste une ligne existante, même si un paiement
-             * a été effectué ultérieurement.
-             */
-            if (
-                    existing != null
-                            && isIdentical(
-                            incomingRow,
-                            existing
-                    )
-            ) {
-                existingRowsCount++;
-                continue;
-            }
-
-            /*
-             * Une même police et un même rang avec des données
-             * différentes constituent une contradiction.
-             */
-            if (existing != null) {
-                errors.add(
-                        new CsvValidationError(
-                                incomingRow.rowNumber(),
-                                "type_maturite",
-                                "CONTRADICTORY_MATURITY",
-                                "La police "
-                                        + incomingRow.policyNumber()
-                                        + " possède déjà une maturité "
-                                        + "de rang "
-                                        + incomingRow.maturityRank()
-                                        + " avec une date, un type, "
-                                        + "un montant ou une date de fin "
-                                        + "des intérêts différente."
-                        )
-                );
-
-                continue;
-            }
-
-            /*
-             * À ce stade, la ligne représente réellement
-             * une nouvelle maturité.
-             *
-             * Elle doit être strictement postérieure au dernier
-             * paiement PAID de la police.
-             */
-            LocalDate lastPaidPaymentDate =
-                    lastPaidPaymentDateByPolicy
-                            .get(normalizedPolicyNumber);
-
-            if (
-                    lastPaidPaymentDate != null
-                            && !incomingRow.maturityDate()
-                            .isAfter(lastPaidPaymentDate)
-            ) {
-                errors.add(
-                        maturityNotAfterLastPaymentError(
-                                incomingRow,
-                                lastPaidPaymentDate
-                        )
-                );
-
-                continue;
-            }
-
-            newRows.add(incomingRow);
-        }
-
-        if (errors.isEmpty()) {
-            validateContinuityAndDates(
-                    uniqueIncomingRows,
-                    existingMaturities,
+            validateClientName(
+                    row,
+                    existingState,
                     errors
+            );
+
+            validateInterestEndDate(
+                    row,
+                    existingState,
+                    errors
+            );
+
+            validateMaturityDate(
+                    row,
+                    maturityDate,
+                    existingState,
+                    errors
+            );
+
+            validateAgainstLastPayment(
+                    row,
+                    maturityDate,
+                    lastPaymentDateByPolicy.get(
+                            policyKey
+                    ),
+                    errors
+            );
+
+            int assignedRank =
+                    nextRankByPolicy.getOrDefault(
+                            policyKey,
+                            1
+                    );
+
+            newRows.add(
+                    MaturityImportRow.from(
+                            row,
+                            assignedRank,
+                            maturityDate
+                    )
+            );
+
+            nextRankByPolicy.put(
+                    policyKey,
+                    Math.addExact(
+                            assignedRank,
+                            1
+                    )
             );
         }
 
         return new MaturityImportAnalysis(
                 newRows,
-                existingRowsCount,
                 errors
         );
     }
 
-    /**
-     * Construit la date de fin des intérêts connue
-     * pour chaque police déjà enregistrée.
-     *
-     * <p>La validation d'import garantit normalement qu'une
-     * police ne possède qu'une seule date. Une vérification
-     * défensive est néanmoins conservée afin de détecter
-     * d'éventuelles données historiques incohérentes.</p>
-     */
-    private Map<String, LocalDate>
-    buildExistingInterestEndDateIndex(
-            Collection<PolicyMaturityEntity>
-                    existingMaturities
+    private Map<String, ExistingPolicyState>
+    buildExistingPolicyStateIndex(
+            List<PolicyMaturityEntity> maturities
     ) {
-        Map<String, LocalDate>
-                interestEndDateByPolicy =
+        Map<String, ExistingPolicyStateBuilder>
+                builders =
                 new HashMap<>();
 
-        for (PolicyMaturityEntity maturity : existingMaturities) {
-            String normalizedPolicyNumber = normalizePolicyNumber(maturity.getPolicyNumber());
+        for (PolicyMaturityEntity maturity : maturities) {
+            String policyKey =
+                    normalizePolicyKey(
+                            maturity.getPolicyNumber()
+                    );
 
-            LocalDate previousDate =
-                    interestEndDateByPolicy
-                            .putIfAbsent(
-                                    normalizedPolicyNumber,
-                                    maturity.getInterestEndDate()
-                            );
-
-            if (
-                    previousDate != null
-                            && !previousDate.equals(
-                            maturity.getInterestEndDate()
-                    )
-            ) {
-                throw new IllegalStateException(
-                        "La police "
-                                + maturity
-                                .getPolicyNumber()
-                                + " possède plusieurs dates "
-                                + "de fin des intérêts en base."
-                );
-            }
+            builders.computeIfAbsent(
+                    policyKey,
+                    ignored ->
+                            new ExistingPolicyStateBuilder()
+            ).accept(maturity);
         }
 
-        return interestEndDateByPolicy;
+        Map<String, ExistingPolicyState> states =
+                new HashMap<>();
+
+        builders.forEach(
+                (policyKey, builder) ->
+                        states.put(
+                                policyKey,
+                                builder.build(policyKey)
+                        )
+        );
+
+        return states;
     }
 
-    /**
-     * Retourne la date du dernier paiement PAID
-     * pour chaque police concernée par l'import.
-     *
-     * <p>Les paiements annulés ne sont pas fournis à cette
-     * méthode et ne bloquent donc pas les nouvelles
-     * maturités.</p>
-     */
-    private Map<String, LocalDate>
-    buildLastPaidPaymentDateIndex(
-            Collection<PaymentEntity> paidPayments
+    private Map<String, Integer> buildNextRankIndex(
+            Map<String, ExistingPolicyState> states
     ) {
-        Map<String, LocalDate>
-                lastPaymentDateByPolicy =
+        Map<String, Integer> nextRanks =
+                new HashMap<>();
+
+        states.forEach(
+                (policyKey, state) ->
+                        nextRanks.put(
+                                policyKey,
+                                Math.addExact(
+                                        state.maximumRank(),
+                                        1
+                                )
+                        )
+        );
+
+        return nextRanks;
+    }
+
+    private Map<String, LocalDate>
+    buildLastPaymentDateIndex(
+            List<PaymentEntity> paidPayments
+    ) {
+        Map<String, LocalDate> dates =
                 new HashMap<>();
 
         for (PaymentEntity payment : paidPayments) {
-            String normalizedPolicyNumber =
-                    normalizePolicyNumber(
+            String policyKey =
+                    normalizePolicyKey(
                             payment.getPolicyNumber()
                     );
 
-            lastPaymentDateByPolicy.merge(
-                    normalizedPolicyNumber,
+            dates.merge(
+                    policyKey,
                     payment.getPaymentDate(),
-                    (currentLatestDate, candidateDate) ->
-                            candidateDate.isAfter(
-                                    currentLatestDate
-                            )
-                                    ? candidateDate
-                                    : currentLatestDate
+                    (current, candidate) ->
+                            candidate.isAfter(current)
+                                    ? candidate
+                                    : current
             );
         }
 
-        return lastPaymentDateByPolicy;
+        return dates;
     }
 
-    /**
-     * Construit l'erreur retournée lorsqu'une nouvelle
-     * maturité serait insérée avant ou le jour d'un
-     * paiement encore valide.
-     */
-    private CsvValidationError
-    maturityNotAfterLastPaymentError(ParsedMaturityRow incomingRow, LocalDate lastPaidPaymentDate) {
-        return new CsvValidationError(
-                incomingRow.rowNumber(),
-                "date_maturite",
-                "MATURITY_NOT_AFTER_LAST_PAYMENT",
-                "La maturité de la police "
-                        + incomingRow.policyNumber()
-                        + " doit être strictement postérieure "
-                        + "au dernier paiement valide du "
-                        + lastPaidPaymentDate
-                        + "."
-        );
-    }
-
-
-    private CsvValidationError
-    inconsistentInterestEndDateError(ParsedMaturityRow incomingRow, LocalDate existingInterestEndDate) {
-        return new CsvValidationError(
-                incomingRow.rowNumber(),
-                "date_fin_interets",
-                "INCONSISTENT_INTEREST_END_DATE",
-                "La police "
-                        + incomingRow.policyNumber()
-                        + " possède déjà la date de fin "
-                        + "des intérêts "
-                        + existingInterestEndDate
-                        + "."
-        );
-    }
-
-    /**
-     * Vérifie la continuité des rangs et l'ordre
-     * chronologique des maturités.
-     */
-    private void validateContinuityAndDates(
-            List<ParsedMaturityRow> incomingRows,
-            List<PolicyMaturityEntity> existingMaturities,
+    private void validateClientName(
+            ParsedMaturityRow row,
+            ExistingPolicyState state,
             List<CsvValidationError> errors
     ) {
-        Map<String,
-                List<ChronologicalMaturity>>
-                maturitiesByPolicy = new HashMap<>();
-
-        for (PolicyMaturityEntity existing : existingMaturities) {
-            String normalizedPolicy = normalizePolicyNumber(existing.getPolicyNumber());
-
-            maturitiesByPolicy
-                    .computeIfAbsent(
-                            normalizedPolicy,
-                            ignored -> new ArrayList<>()
-                    )
-                    .add(
-                            new ChronologicalMaturity(
-                                    existing.getMaturityRank(),
-                                    existing.getMaturityDate(),
-                                    0
-                            )
-                    );
-        }
-
-        for (ParsedMaturityRow incoming : incomingRows) {
-            String normalizedPolicy =
-                    normalizePolicyNumber(
-                            incoming.policyNumber()
-                    );
-
-            List<ChronologicalMaturity>
-                    maturities =
-                    maturitiesByPolicy
-                            .computeIfAbsent(
-                                    normalizedPolicy,
-                                    ignored ->
-                                            new ArrayList<>()
-                            );
-
-            boolean rankAlreadyAdded =
-                    maturities
-                            .stream()
-                            .anyMatch(
-                                    maturity ->
-                                            maturity.rank()
-                                                    == incoming
-                                                    .maturityRank()
-                            );
-
-            if (!rankAlreadyAdded) {
-                maturities.add(
-                        new ChronologicalMaturity(
-                                incoming.maturityRank(),
-                                incoming.maturityDate(),
-                                incoming.rowNumber()
-                        )
-                );
-            }
-        }
-
-        for (
-                Map.Entry<String,
-                        List<ChronologicalMaturity>>
-                        entry
-                : maturitiesByPolicy.entrySet()
+        if (
+                state == null
+                        || state.clientName() == null
+                        || isUnknownClientName(
+                        state.clientName()
+                )
         ) {
-            validatePolicySequence(
-                    entry.getKey(),
-                    entry.getValue(),
-                    errors
-            );
-        }
-    }
-
-    private void validatePolicySequence(
-            String normalizedPolicyNumber,
-            List<ChronologicalMaturity>
-                    maturities,
-            List<CsvValidationError> errors
-    ) {
-        List<ChronologicalMaturity> ordered =
-                maturities
-                        .stream()
-                        .sorted(
-                                Comparator.comparingInt(
-                                        ChronologicalMaturity
-                                                ::rank
-                                )
-                        )
-                        .toList();
-
-        if (ordered.isEmpty()) {
             return;
         }
 
-        int maximumRank =
-                ordered.getLast().rank();
-
-        Map<Integer, ChronologicalMaturity>
-                byRank =
-                ordered
-                        .stream()
-                        .collect(
-                                Collectors.toMap(
-                                        ChronologicalMaturity
-                                                ::rank,
-                                        Function.identity()
-                                )
-                        );
-
-        for (
-                int expectedRank = 1;
-                expectedRank <= maximumRank;
-                expectedRank++
+        if (
+                !normalizeClientKey(
+                        state.clientName()
+                ).equals(
+                        normalizeClientKey(
+                                row.clientName()
+                        )
+                )
         ) {
-            if (
-                    !byRank.containsKey(
-                            expectedRank
+            errors.add(
+                    new CsvValidationError(
+                            row.rowNumber(),
+                            "nom_client",
+                            "INCONSISTENT_CLIENT_NAME",
+                            "La police "
+                                    + row.policyNumber()
+                                    + " est déjà rattachée au client "
+                                    + state.clientName()
+                                    + "."
                     )
-            ) {
-                ChronologicalMaturity
-                        nextKnownMaturity =
-                        findFirstAfterRank(
-                                ordered,
-                                expectedRank
-                        );
-
-                errors.add(
-                        new CsvValidationError(
-                                nextKnownMaturity != null
-                                        ? nextKnownMaturity
-                                          .sourceRowNumber()
-                                        : 0,
-                                "type_maturite",
-                                "MISSING_PREVIOUS_MATURITY",
-                                "La police "
-                                        + normalizedPolicyNumber
-                                        + " ne possède pas "
-                                        + "la maturité de rang "
-                                        + expectedRank
-                                        + "."
-                        )
-                );
-            }
+            );
         }
+    }
 
-        /*
-         * Une maturité de rang supérieur doit avoir une date
-         * strictement postérieure à la maturité précédente.
-         */
-        for (
-                int index = 1;
-                index < ordered.size();
-                index++
+    private void validateInterestEndDate(
+            ParsedMaturityRow row,
+            ExistingPolicyState state,
+            List<CsvValidationError> errors
+    ) {
+        if (
+                state == null
+                        || state.interestEndDate() == null
         ) {
-            ChronologicalMaturity previous =
-                    ordered.get(index - 1);
-
-            ChronologicalMaturity current =
-                    ordered.get(index);
-
-            if (
-                    !current.date()
-                            .isAfter(
-                                    previous.date()
-                            )
-            ) {
-                errors.add(
-                        new CsvValidationError(
-                                current
-                                        .sourceRowNumber(),
-                                "date_maturite",
-                                "INVALID_MATURITY_DATE_SEQUENCE",
-                                "Pour la police "
-                                        + normalizedPolicyNumber
-                                        + ", la maturité de rang "
-                                        + current.rank()
-                                        + " doit avoir une date "
-                                        + "postérieure à la maturité "
-                                        + "de rang "
-                                        + previous.rank()
-                                        + "."
-                        )
-                );
-            }
+            return;
         }
-    }
 
-    private ChronologicalMaturity
-    findFirstAfterRank(
-            List<ChronologicalMaturity>
-                    maturities,
-            int missingRank
-    ) {
-        return maturities
-                .stream()
-                .filter(
-                        maturity ->
-                                maturity.rank()
-                                        > missingRank
+        if (
+                !state.interestEndDate().equals(
+                        row.interestEndDate()
                 )
-                .findFirst()
-                .orElse(null);
-    }
-
-    /**
-     * Élimine les répétitions strictement identiques
-     * du fichier.
-     *
-     * <p>Les contradictions internes ont déjà été détectées
-     * par le parseur. Deux lignes partageant la même clé à
-     * cette étape sont donc des répétitions tolérées.</p>
-     */
-    private InternalDeduplicationResult
-    deduplicateInternalRows(
-            List<ParsedMaturityRow> rows
-    ) {
-        Map<MaturityBusinessKey,
-                ParsedMaturityRow>
-                uniqueByKey =
-                new LinkedHashMap<>();
-
-        int duplicateRowsCount = 0;
-
-        for (
-                ParsedMaturityRow row
-                : rows
         ) {
-            MaturityBusinessKey key =
-                    MaturityBusinessKey.of(
-                            row.policyNumber(),
-                            row.maturityRank()
-                    );
+            errors.add(
+                    new CsvValidationError(
+                            row.rowNumber(),
+                            "date_fin_interets",
+                            "INCONSISTENT_INTEREST_END_DATE",
+                            "La police "
+                                    + row.policyNumber()
+                                    + " possède déjà la date "
+                                    + "de fin des intérêts "
+                                    + state.interestEndDate()
+                                    + "."
+                    )
+            );
+        }
+    }
 
-            ParsedMaturityRow previous =
-                    uniqueByKey.putIfAbsent(
-                            key,
-                            row
-                    );
-
-            if (previous != null) {
-                duplicateRowsCount++;
-            }
+    private void validateMaturityDate(
+            ParsedMaturityRow row,
+            LocalDate maturityDate,
+            ExistingPolicyState state,
+            List<CsvValidationError> errors
+    ) {
+        if (
+                maturityDate.isAfter(
+                        row.interestEndDate()
+                )
+        ) {
+            errors.add(
+                    new CsvValidationError(
+                            row.rowNumber(),
+                            "date_fin_interets",
+                            "MATURITY_AFTER_INTEREST_END_DATE",
+                            "La date de fin des intérêts "
+                                    + row.interestEndDate()
+                                    + " est antérieure à la date "
+                                    + "métier du chargement "
+                                    + maturityDate
+                                    + "."
+                    )
+            );
         }
 
-        return new InternalDeduplicationResult(
-                List.copyOf(
-                        uniqueByKey.values()
-                ),
-                duplicateRowsCount
-        );
+        if (
+                state != null
+                        && state.lastMaturityDate() != null
+                        && maturityDate.isBefore(
+                        state.lastMaturityDate()
+                )
+        ) {
+            errors.add(
+                    new CsvValidationError(
+                            row.rowNumber(),
+                            "date_chargement",
+                            "MATURITY_BEFORE_LAST_MATURITY",
+                            "La date métier du chargement "
+                                    + maturityDate
+                                    + " est antérieure à la dernière "
+                                    + "maturité de la police "
+                                    + state.lastMaturityDate()
+                                    + "."
+                    )
+            );
+        }
     }
 
-    /**
-     * Vérifie qu'une maturité reçue est strictement
-     * identique à celle déjà enregistrée.
-     */
-    private boolean isIdentical(
-            ParsedMaturityRow incoming,
-            PolicyMaturityEntity existing
+    private void validateAgainstLastPayment(
+            ParsedMaturityRow row,
+            LocalDate maturityDate,
+            LocalDate lastPaymentDate,
+            List<CsvValidationError> errors
     ) {
-        return incoming
-                .policyNumber()
-                .equalsIgnoreCase(
-                        existing
-                                .getPolicyNumber()
+        if (lastPaymentDate == null) {
+            return;
+        }
+
+        if (
+                !maturityDate.isAfter(
+                        lastPaymentDate
                 )
-                && incoming
-                .maturityType()
-                .equalsIgnoreCase(
-                        existing
-                                .getMaturityType()
-                )
-                && incoming
-                .maturityRank()
-                == existing
-                .getMaturityRank()
-                && incoming
-                .maturityDate()
-                .equals(
-                        existing
-                                .getMaturityDate()
-                )
-                && incoming
-                .maturityAmount()
-                .compareTo(
-                        existing
-                                .getMaturityAmount()
-                ) == 0
-                && incoming
-                .interestEndDate()
-                .equals(
-                        existing
-                                .getInterestEndDate()
-                );
+        ) {
+            errors.add(
+                    new CsvValidationError(
+                            row.rowNumber(),
+                            "date_chargement",
+                            "MATURITY_NOT_AFTER_LAST_PAYMENT",
+                            "La date métier du chargement doit "
+                                    + "être strictement postérieure "
+                                    + "au dernier paiement valide "
+                                    + "du "
+                                    + lastPaymentDate
+                                    + "."
+                    )
+            );
+        }
     }
 
-    /**
-     * Calcule une empreinte SHA-256 hexadécimale
-     * du fichier.
-     */
     private String calculateSha256(
             MultipartFile file
     ) {
@@ -747,13 +476,11 @@ public class CsvImportServiceImpl implements CsvImportService {
                             file.getBytes()
                     );
 
-            return HexFormat
-                    .of()
+            return HexFormat.of()
                     .formatHex(hash);
         } catch (
                 IOException
-                | NoSuchAlgorithmException
-                        exception
+                | NoSuchAlgorithmException exception
         ) {
             throw new CsvFileProcessingException(
                     "Impossible de calculer "
@@ -766,45 +493,32 @@ public class CsvImportServiceImpl implements CsvImportService {
     private String resolveFileName(
             MultipartFile file
     ) {
-        return Optional
-                .ofNullable(
-                        file.getOriginalFilename()
+        return Optional.ofNullable(
+                        file == null
+                                ? null
+                                : file.getOriginalFilename()
                 )
-                .filter(
-                        name ->
-                                !name.isBlank()
+                .filter(name ->
+                        !name.isBlank()
                 )
-                .map(
-                        this::removePathInformation
-                )
-                .orElse(
-                        "fichier-sans-nom.csv"
-                );
+                .map(this::removePathInformation)
+                .orElse("fichier-sans-nom.csv");
     }
 
-    /**
-     * Empêche qu'un nom transmis par le navigateur
-     * contienne un chemin local complet.
-     */
     private String removePathInformation(
             String fileName
     ) {
         String normalized =
-                fileName.replace(
-                        '\\',
-                        '/'
-                );
+                fileName.replace('\\', '/');
 
         int lastSeparator =
                 normalized.lastIndexOf('/');
 
-        if (lastSeparator >= 0) {
-            return normalized.substring(
-                    lastSeparator + 1
-            );
-        }
-
-        return normalized;
+        return lastSeparator >= 0
+                ? normalized.substring(
+                lastSeparator + 1
+        )
+                : normalized;
     }
 
     private long resolveFileSize(
@@ -815,7 +529,15 @@ public class CsvImportServiceImpl implements CsvImportService {
                 : file.getSize();
     }
 
-    private String normalizePolicyNumber(
+    private boolean isUnknownClientName(
+            String clientName
+    ) {
+        return UNKNOWN_CLIENT_NAME.equalsIgnoreCase(
+                normalizeClientName(clientName)
+        );
+    }
+
+    private String normalizePolicyKey(
             String policyNumber
     ) {
         return policyNumber
@@ -823,21 +545,168 @@ public class CsvImportServiceImpl implements CsvImportService {
                 .toUpperCase(Locale.ROOT);
     }
 
-    /**
-     * Représentation minimale utilisée uniquement
-     * lors du contrôle de continuité et de chronologie.
-     */
-    private record ChronologicalMaturity(
-            int rank,
-            LocalDate date,
-            int sourceRowNumber
+    private String normalizeClientName(
+            String clientName
+    ) {
+        if (clientName == null) {
+            return "";
+        }
+
+        return clientName
+                .trim()
+                .replaceAll("\\s+", " ");
+    }
+
+    private String normalizeClientKey(
+            String clientName
+    ) {
+        return normalizeClientName(clientName)
+                .toUpperCase(Locale.ROOT);
+    }
+
+    private record ExistingPolicyState(
+            int maximumRank,
+            LocalDate lastMaturityDate,
+            LocalDate interestEndDate,
+            String clientName
     ) {
     }
 
-    private record InternalDeduplicationResult(
-            List<ParsedMaturityRow>
-            uniqueRows,
-            int duplicateRowsCount
-    ) {
+    private static final class
+    ExistingPolicyStateBuilder {
+
+        private int maximumRank;
+
+        private LocalDate lastMaturityDate;
+
+        private LocalDate interestEndDate;
+
+        private String clientName;
+
+        private void accept(
+                PolicyMaturityEntity maturity
+        ) {
+            if (maturity.getMaturityRank() <= 0) {
+                throw new IllegalStateException(
+                        "La police "
+                                + maturity.getPolicyNumber()
+                                + " possède un rang invalide."
+                );
+            }
+
+            maximumRank =
+                    Math.max(
+                            maximumRank,
+                            maturity.getMaturityRank()
+                    );
+
+            if (
+                    lastMaturityDate == null
+                            || maturity.getMaturityDate()
+                            .isAfter(lastMaturityDate)
+            ) {
+                lastMaturityDate =
+                        maturity.getMaturityDate();
+            }
+
+            acceptInterestEndDate(maturity);
+            acceptClientName(maturity);
+        }
+
+        private void acceptInterestEndDate(
+                PolicyMaturityEntity maturity
+        ) {
+            if (interestEndDate == null) {
+                interestEndDate =
+                        maturity.getInterestEndDate();
+
+                return;
+            }
+
+            if (
+                    !interestEndDate.equals(
+                            maturity.getInterestEndDate()
+                    )
+            ) {
+                throw new IllegalStateException(
+                        "La police "
+                                + maturity.getPolicyNumber()
+                                + " possède plusieurs dates "
+                                + "de fin des intérêts."
+                );
+            }
+        }
+
+        private void acceptClientName(
+                PolicyMaturityEntity maturity
+        ) {
+            String candidate =
+                    normalizeStaticClientName(
+                            maturity.getClientName()
+                    );
+
+            if (
+                    candidate.isBlank()
+                            || UNKNOWN_CLIENT_NAME
+                            .equalsIgnoreCase(candidate)
+            ) {
+                return;
+            }
+
+            if (
+                    clientName == null
+                            || clientName.isBlank()
+                            || UNKNOWN_CLIENT_NAME
+                            .equalsIgnoreCase(clientName)
+            ) {
+                clientName = candidate;
+                return;
+            }
+
+            if (
+                    !normalizeStaticClientName(
+                            clientName
+                    ).equalsIgnoreCase(candidate)
+            ) {
+                throw new IllegalStateException(
+                        "La police "
+                                + maturity.getPolicyNumber()
+                                + " possède plusieurs noms "
+                                + "de client."
+                );
+            }
+        }
+
+        private ExistingPolicyState build(
+                String policyKey
+        ) {
+            if (maximumRank <= 0) {
+                throw new IllegalStateException(
+                        "La police "
+                                + policyKey
+                                + " ne possède aucun rang valide."
+                );
+            }
+
+            return new ExistingPolicyState(
+                    maximumRank,
+                    lastMaturityDate,
+                    interestEndDate,
+                    clientName
+            );
+        }
+
+        private static String
+        normalizeStaticClientName(
+                String clientName
+        ) {
+            if (clientName == null) {
+                return "";
+            }
+
+            return clientName
+                    .trim()
+                    .replaceAll("\\s+", " ");
+        }
     }
 }

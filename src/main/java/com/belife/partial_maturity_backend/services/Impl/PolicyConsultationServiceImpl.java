@@ -1,7 +1,12 @@
 package com.belife.partial_maturity_backend.services.Impl;
 
 import com.belife.partial_maturity_backend.config.properties.InterestProperties;
-import com.belife.partial_maturity_backend.dtos.responses.*;
+import com.belife.partial_maturity_backend.dtos.responses.InterestSimulationResponse;
+import com.belife.partial_maturity_backend.dtos.responses.PolicyDetailResponse;
+import com.belife.partial_maturity_backend.dtos.responses.PolicyFinancialDetailResponse;
+import com.belife.partial_maturity_backend.dtos.responses.PolicyFinancialSummaryResponse;
+import com.belife.partial_maturity_backend.dtos.responses.PolicyMaturityResponse;
+import com.belife.partial_maturity_backend.dtos.responses.PolicyPaymentHistoryResponse;
 import com.belife.partial_maturity_backend.entities.PaymentEntity;
 import com.belife.partial_maturity_backend.entities.PolicyMaturityEntity;
 import com.belife.partial_maturity_backend.enums.PaymentStatus;
@@ -33,13 +38,15 @@ import static com.belife.partial_maturity_backend.utils.FinancialAmountUtils.nor
 import static com.belife.partial_maturity_backend.utils.FinancialAmountUtils.zero;
 
 /**
- * Implémente la consultation des polices,
- * de leurs maturités et de leur situation financière.
+ * Implémente la consultation des polices
+ * et de leur situation financière.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class PolicyConsultationServiceImpl implements PolicyConsultationService {
+
+    private static final String UNKNOWN_CLIENT_NAME = "CLIENT NON RENSEIGNE";
 
     private final PolicyMaturityRepository policyMaturityRepository;
 
@@ -53,14 +60,6 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
 
     private final BusinessDateProvider businessDateProvider;
 
-    /**
-     * Construit les synthèses avec un chargement groupé
-     * des maturités et des paiements.
-     *
-     * <p>Le moteur financier est ensuite exécuté en mémoire
-     * pour chaque police. Aucune requête SQL supplémentaire
-     * n'est déclenchée dans la boucle.</p>
-     */
     @Override
     public List<PolicyFinancialSummaryResponse>
     getPolicyFinancialSummaries() {
@@ -72,13 +71,20 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
             return List.of();
         }
 
-        Map<String, List<PolicyMaturityEntity>> maturitiesByPolicy = groupMaturitiesByPolicy(allMaturities);
+        Map<String, List<PolicyMaturityEntity>>
+                maturitiesByPolicy =
+                groupMaturitiesByPolicy(
+                        allMaturities
+                );
 
         Set<String> storedPolicyNumbers =
                 maturitiesByPolicy.values()
                         .stream()
                         .map(List::getFirst)
-                        .map(PolicyMaturityEntity::getPolicyNumber)
+                        .map(
+                                PolicyMaturityEntity
+                                        ::getPolicyNumber
+                        )
                         .collect(Collectors.toSet());
 
         List<PaymentEntity> paidPayments =
@@ -88,27 +94,32 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                                 PaymentStatus.PAID
                         );
 
-        Map<String, List<PaymentEntity>> paymentsByPolicy = groupPaymentsByPolicy(paidPayments);
+        Map<String, List<PaymentEntity>>
+                paymentsByPolicy =
+                groupPaymentsByPolicy(
+                        paidPayments
+                );
 
         LocalDate calculationDate = businessDateProvider.currentDate();
 
-        return maturitiesByPolicy
-                .values()
+        return maturitiesByPolicy.values()
                 .stream()
-                .map(maturities ->
-                        toFinancialSummary(
-                                maturities,
-                                paymentsByPolicy.getOrDefault(
-                                        normalizePolicyKey(
-                                                maturities
-                                                        .getFirst()
-                                                        .getPolicyNumber()
-                                        ),
-                                        List.of()
-                                ),
-                                calculationDate
-                        )
-                )
+                .map(maturities -> {
+                    String policyKey =
+                            normalizePolicyKey(
+                                    maturities.getFirst()
+                                            .getPolicyNumber()
+                            );
+
+                    return toFinancialSummary(
+                            maturities,
+                            paymentsByPolicy.getOrDefault(
+                                    policyKey,
+                                    List.of()
+                            ),
+                            calculationDate
+                    );
+                })
                 .sorted(
                         Comparator.comparing(
                                 PolicyFinancialSummaryResponse
@@ -119,28 +130,9 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                 .toList();
     }
 
-    /**
-     * Charge les maturités et construit le résumé
-     * descriptif d'une police.
-     */
     @Override
     public PolicyDetailResponse getPolicyDetails(String policyNumber) {
-        String normalizedPolicyNumber =
-                normalizePolicyNumber(
-                        policyNumber
-                );
-
-        List<PolicyMaturityEntity> maturities =
-                policyMaturityRepository
-                        .findAllByPolicyNumberIgnoreCaseOrderByMaturityRankAsc(
-                                normalizedPolicyNumber
-                        );
-
-        if (maturities.isEmpty()) {
-            throw new PolicyNotFoundException(
-                    normalizedPolicyNumber
-            );
-        }
+        List<PolicyMaturityEntity> maturities = findPolicyMaturities(policyNumber);
 
         List<PolicyMaturityResponse>
                 maturityResponses =
@@ -151,67 +143,51 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                         )
                         .toList();
 
-        BigDecimal totalMaturityAmount = sumMaturityAmounts(maturities);
+        String storedPolicyNumber =
+                maturities.getFirst()
+                        .getPolicyNumber();
 
-        LocalDate firstMaturityDate = findFirstMaturityDate(maturities);
-
-        LocalDate lastMaturityDate = findLastMaturityDate(maturities);
-
-        String storedPolicyNumber = maturities.getFirst().getPolicyNumber();
+        String clientName =
+                resolveClientName(
+                        maturities
+                );
 
         return new PolicyDetailResponse(
                 storedPolicyNumber,
+                clientName,
                 maturities.size(),
-                totalMaturityAmount,
-                firstMaturityDate,
-                lastMaturityDate,
+                sumMaturityAmounts(maturities),
+                findFirstMaturityDate(maturities),
+                findLastMaturityDate(maturities),
                 maturityResponses
         );
     }
 
-    /**
-     * Construit le détail financier d'une police.
-     *
-     * <p>Seuls les paiements PAID participent à la simulation,
-     * aux agrégats financiers et à l'historique présenté
-     * dans cette consultation.</p>
-     */
     @Override
     public PolicyFinancialDetailResponse
     getPolicyFinancialDetails(
             String policyNumber
     ) {
-        String normalizedPolicyNumber =
-                normalizePolicyNumber(
+        List<PolicyMaturityEntity> maturities =
+                findPolicyMaturities(
                         policyNumber
                 );
-
-        List<PolicyMaturityEntity> maturities =
-                policyMaturityRepository
-                        .findAllByPolicyNumberIgnoreCaseOrderByMaturityRankAsc(
-                                normalizedPolicyNumber
-                        );
-
-        if (maturities.isEmpty()) {
-            throw new PolicyNotFoundException(
-                    normalizedPolicyNumber
-            );
-        }
-
-        /*
-         * Seuls les paiements valides participent
-         * à la situation financière de la police.
-         */
-        List<PaymentEntity> paidPayments =
-                paymentRepository
-                        .findAllByPolicyNumberIgnoreCaseAndStatusOrderByPaymentDateAscIdAsc(
-                                normalizedPolicyNumber,
-                                PaymentStatus.PAID
-                        );
 
         String storedPolicyNumber =
                 maturities.getFirst()
                         .getPolicyNumber();
+
+        String clientName =
+                resolveClientName(
+                        maturities
+                );
+
+        List<PaymentEntity> paidPayments =
+                paymentRepository
+                        .findAllByPolicyNumberIgnoreCaseAndStatusOrderByPaymentDateAscIdAsc(
+                                storedPolicyNumber,
+                                PaymentStatus.PAID
+                        );
 
         LocalDate calculationDate =
                 businessDateProvider.currentDate();
@@ -222,15 +198,12 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                 );
 
         InterestSimulationResponse simulation =
-                calculationEngine.calculate(
+                calculateSimulation(
                         storedPolicyNumber,
+                        maturities,
+                        paidPayments,
                         calculationDate,
-                        interestEndDate,
-                        interestProperties.annualRate(),
-                        buildEvents(
-                                maturities,
-                                paidPayments
-                        )
+                        interestEndDate
                 );
 
         BigDecimal paidInterestAmount =
@@ -250,18 +223,17 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                         )
                 );
 
-        List<PolicyMaturityResponse> maturityResponses =
+        List<PolicyMaturityResponse>
+                maturityResponses =
                 maturities.stream()
                         .map(
-                                policyMaturityMapper::toResponse
+                                policyMaturityMapper
+                                        ::toResponse
                         )
                         .toList();
 
-        /*
-         * L'historique est présenté du paiement valide
-         * le plus récent au plus ancien.
-         */
-        List<PolicyPaymentHistoryResponse> paymentResponses =
+        List<PolicyPaymentHistoryResponse>
+                paymentResponses =
                 paidPayments.stream()
                         .sorted(
                                 Comparator
@@ -270,7 +242,8 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                                                         ::getPaymentDate
                                         )
                                         .thenComparing(
-                                                PaymentEntity::getId
+                                                PaymentEntity
+                                                        ::getId
                                         )
                                         .reversed()
                         )
@@ -281,6 +254,7 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
 
         return new PolicyFinancialDetailResponse(
                 storedPolicyNumber,
+                clientName,
                 maturities.size(),
                 sumMaturityAmounts(maturities),
                 findFirstMaturityDate(maturities),
@@ -296,29 +270,237 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
         );
     }
 
-    /**
-     * Calcule le montant cumulé des paiements
-     * encore valides.
-     */
-    private BigDecimal calculateTotalPaidAmount(
-            List<PaymentEntity> paidPayments
+    private PolicyFinancialSummaryResponse
+    toFinancialSummary(
+            List<PolicyMaturityEntity> maturities,
+            List<PaymentEntity> paidPayments,
+            LocalDate calculationDate
     ) {
-        return normalize(
-                paidPayments.stream()
-                        .map(
-                                PaymentEntity::getPaidAmount
+        PolicyMaturityEntity firstMaturity =
+                maturities.getFirst();
+
+        String policyNumber =
+                firstMaturity.getPolicyNumber();
+
+        String clientName =
+                resolveClientName(
+                        maturities
+                );
+
+        LocalDate interestEndDate =
+                resolveInterestEndDate(
+                        maturities
+                );
+
+        InterestSimulationResponse simulation =
+                calculateSimulation(
+                        policyNumber,
+                        maturities,
+                        paidPayments,
+                        calculationDate,
+                        interestEndDate
+                );
+
+        BigDecimal paidInterestAmount =
+                calculatePaidInterestAmount(
+                        paidPayments
+                );
+
+        BigDecimal totalGeneratedInterestAmount =
+                normalize(
+                        paidInterestAmount.add(
+                                simulation.openInterest()
                         )
-                        .reduce(
-                                zero(),
-                                BigDecimal::add
-                        )
+                );
+
+        return new PolicyFinancialSummaryResponse(
+                policyNumber,
+                clientName,
+                maturities.size(),
+                sumMaturityAmounts(maturities),
+                findFirstMaturityDate(maturities),
+                findLastMaturityDate(maturities),
+                interestEndDate,
+                simulation.interestAccrualClosed(),
+                simulation.annualRate(),
+                simulation.completedCycles(),
+                simulation.openCapital(),
+                simulation.openInterest(),
+                paidInterestAmount,
+                totalGeneratedInterestAmount,
+                simulation.balance(),
+                simulation.calculationDate()
         );
     }
 
+    private InterestSimulationResponse
+    calculateSimulation(
+            String policyNumber,
+            List<PolicyMaturityEntity> maturities,
+            List<PaymentEntity> paidPayments,
+            LocalDate calculationDate,
+            LocalDate interestEndDate
+    ) {
+        return calculationEngine.calculate(
+                policyNumber,
+                calculationDate,
+                interestEndDate,
+                interestProperties.annualRate(),
+                buildEvents(
+                        maturities,
+                        paidPayments
+                )
+        );
+    }
+
+    private List<PolicyMaturityEntity>
+    findPolicyMaturities(
+            String policyNumber
+    ) {
+        String normalizedPolicyNumber =
+                normalizePolicyNumber(
+                        policyNumber
+                );
+
+        List<PolicyMaturityEntity> maturities =
+                policyMaturityRepository
+                        .findAllByPolicyNumberIgnoreCaseOrderByMaturityRankAsc(
+                                normalizedPolicyNumber
+                        );
+
+        if (maturities.isEmpty()) {
+            throw new PolicyNotFoundException(
+                    normalizedPolicyNumber
+            );
+        }
+
+        return maturities;
+    }
+
     /**
-     * Construit le résumé léger d'un paiement PAID
-     * affiché dans l'historique de la police.
+     * Retourne le nom cohérent d'une police.
+     *
+     * La valeur historique CLIENT NON RENSEIGNE est ignorée
+     * lorsqu'un véritable nom est disponible.
      */
+    private String resolveClientName(
+            List<PolicyMaturityEntity> maturities
+    ) {
+        String resolvedClientName = null;
+
+        for (PolicyMaturityEntity maturity : maturities) {
+            String candidate =
+                    normalizeClientName(
+                            maturity.getClientName()
+                    );
+
+            if (
+                    candidate.isBlank()
+                            || isUnknownClientName(candidate)
+            ) {
+                continue;
+            }
+
+            if (resolvedClientName == null) {
+                resolvedClientName = candidate;
+                continue;
+            }
+
+            if (
+                    !normalizeClientKey(
+                            resolvedClientName
+                    ).equals(
+                            normalizeClientKey(candidate)
+                    )
+            ) {
+                throw new IllegalStateException(
+                        "La police "
+                                + maturity.getPolicyNumber()
+                                + " possède plusieurs noms "
+                                + "de client."
+                );
+            }
+        }
+
+        return resolvedClientName == null
+                ? UNKNOWN_CLIENT_NAME
+                : resolvedClientName;
+    }
+
+    private LocalDate resolveInterestEndDate(
+            List<PolicyMaturityEntity> maturities
+    ) {
+        LocalDate interestEndDate =
+                maturities.getFirst()
+                        .getInterestEndDate();
+
+        boolean inconsistentDate =
+                maturities.stream()
+                        .anyMatch(maturity ->
+                                !interestEndDate.equals(
+                                        maturity
+                                                .getInterestEndDate()
+                                )
+                        );
+
+        if (inconsistentDate) {
+            throw new IllegalStateException(
+                    "La police "
+                            + maturities.getFirst()
+                            .getPolicyNumber()
+                            + " possède plusieurs dates "
+                            + "de fin des intérêts."
+            );
+        }
+
+        return interestEndDate;
+    }
+
+    private List<CalculationEvent> buildEvents(
+            List<PolicyMaturityEntity> maturities,
+            List<PaymentEntity> paidPayments
+    ) {
+        List<CalculationEvent> events =
+                new ArrayList<>();
+
+        maturities.stream()
+                .map(this::toMaturityEvent)
+                .forEach(events::add);
+
+        paidPayments.stream()
+                .map(this::toPaymentEvent)
+                .forEach(events::add);
+
+        return events;
+    }
+
+    private CalculationEvent toMaturityEvent(
+            PolicyMaturityEntity maturity
+    ) {
+        return new CalculationEvent(
+                maturity.getId(),
+                maturity.getMaturityDate(),
+                CalculationEvent.EventKind.MATURITY,
+                maturity.getMaturityRank(),
+                maturity.getMaturityType(),
+                maturity.getMaturityAmount()
+        );
+    }
+
+    private CalculationEvent toPaymentEvent(
+            PaymentEntity payment
+    ) {
+        return new CalculationEvent(
+                payment.getId(),
+                payment.getPaymentDate(),
+                CalculationEvent.EventKind.PAYMENT,
+                0,
+                "Paiement n° "
+                        + payment.getId(),
+                payment.getPaidAmount()
+        );
+    }
+
     private PolicyPaymentHistoryResponse
     toPaymentHistoryResponse(
             PaymentEntity payment
@@ -336,66 +518,6 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                         payment.getPaidAmount()
                 ),
                 payment.getCompletedCycles()
-        );
-    }
-
-    private PolicyFinancialSummaryResponse toFinancialSummary(
-            List<PolicyMaturityEntity> maturities,
-            List<PaymentEntity> paidPayments,
-            LocalDate calculationDate
-    ) {
-        PolicyMaturityEntity firstMaturity =
-                maturities.getFirst();
-
-        String policyNumber =
-                firstMaturity.getPolicyNumber();
-
-        LocalDate interestEndDate =
-                resolveInterestEndDate(
-                        maturities
-                );
-
-        List<CalculationEvent> events =
-                buildEvents(
-                        maturities,
-                        paidPayments
-                );
-
-        InterestSimulationResponse simulation =
-                calculationEngine.calculate(
-                        policyNumber,
-                        calculationDate,
-                        interestEndDate,
-                        interestProperties.annualRate(),
-                        events
-                );
-
-        BigDecimal paidInterestAmount = calculatePaidInterestAmount(paidPayments);
-
-//        paidInterestAmount = normalize(paidInterestAmount);
-
-        BigDecimal totalGeneratedInterestAmount = normalize(paidInterestAmount.add(simulation.openInterest()));
-
-        LocalDate firstMaturityDate = findFirstMaturityDate(maturities);
-
-        LocalDate lastMaturityDate = findLastMaturityDate(maturities);
-
-        return new PolicyFinancialSummaryResponse(
-                policyNumber,
-                maturities.size(),
-                sumMaturityAmounts(maturities),
-                firstMaturityDate,
-                lastMaturityDate,
-                interestEndDate,
-                simulation.interestAccrualClosed(),
-                simulation.annualRate(),
-                simulation.completedCycles(),
-                simulation.openCapital(),
-                simulation.openInterest(),
-                paidInterestAmount,
-                totalGeneratedInterestAmount,
-                simulation.balance(),
-                simulation.calculationDate()
         );
     }
 
@@ -435,57 +557,6 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                 );
     }
 
-    /**
-     * Fusionne les maturités et les paiements actifs.
-     * Le moteur applique ensuite l'ordre chronologique.
-     */
-    private List<CalculationEvent> buildEvents(
-            List<PolicyMaturityEntity> maturities,
-            List<PaymentEntity> paidPayments
-    ) {
-        List<CalculationEvent> events =
-                new ArrayList<>();
-
-        maturities.stream()
-                .map(this::toMaturityEvent)
-                .forEach(events::add);
-
-        paidPayments.stream()
-                .map(this::toPaymentEvent)
-                .forEach(events::add);
-
-        return events;
-    }
-
-    private CalculationEvent toMaturityEvent(
-            PolicyMaturityEntity maturity
-    ) {
-        return new CalculationEvent(
-                maturity.getId(),
-                maturity.getMaturityDate(),
-                CalculationEvent.EventKind
-                        .MATURITY,
-                maturity.getMaturityRank(),
-                maturity.getMaturityType(),
-                maturity.getMaturityAmount()
-        );
-    }
-
-    private CalculationEvent toPaymentEvent(
-            PaymentEntity payment
-    ) {
-        return new CalculationEvent(
-                payment.getId(),
-                payment.getPaymentDate(),
-                CalculationEvent.EventKind
-                        .PAYMENT,
-                0,
-                "Paiement n°"
-                        + payment.getId(),
-                payment.getPaidAmount()
-        );
-    }
-
     private BigDecimal sumMaturityAmounts(
             List<PolicyMaturityEntity> maturities
     ) {
@@ -502,10 +573,6 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
         );
     }
 
-    /**
-     * Calcule le montant des intérêts contenus dans
-     * les paiements PAID encore valides.
-     */
     private BigDecimal calculatePaidInterestAmount(
             List<PaymentEntity> paidPayments
     ) {
@@ -514,6 +581,22 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                         .map(
                                 PaymentEntity
                                         ::getInterestAmount
+                        )
+                        .reduce(
+                                zero(),
+                                BigDecimal::add
+                        )
+        );
+    }
+
+    private BigDecimal calculateTotalPaidAmount(
+            List<PaymentEntity> paidPayments
+    ) {
+        return normalize(
+                paidPayments.stream()
+                        .map(
+                                PaymentEntity
+                                        ::getPaidAmount
                         )
                         .reduce(
                                 zero(),
@@ -546,37 +629,31 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
                 .orElseThrow();
     }
 
-    /**
-     * Retourne la date commune à toutes les maturités
-     * d'une police.
-     */
-    private LocalDate resolveInterestEndDate(
-            List<PolicyMaturityEntity> maturities
+    private boolean isUnknownClientName(
+            String clientName
     ) {
-        LocalDate interestEndDate =
-                maturities.getFirst()
-                        .getInterestEndDate();
+        return UNKNOWN_CLIENT_NAME.equalsIgnoreCase(
+                normalizeClientName(clientName)
+        );
+    }
 
-        boolean inconsistentDate =
-                maturities.stream()
-                        .anyMatch(maturity ->
-                                !interestEndDate.equals(
-                                        maturity
-                                                .getInterestEndDate()
-                                )
-                        );
-
-        if (inconsistentDate) {
-            throw new IllegalStateException(
-                    "La police "
-                            + maturities.getFirst()
-                            .getPolicyNumber()
-                            + " possède plusieurs dates "
-                            + "de fin des intérêts."
-            );
+    private String normalizeClientName(
+            String clientName
+    ) {
+        if (clientName == null) {
+            return "";
         }
 
-        return interestEndDate;
+        return clientName
+                .trim()
+                .replaceAll("\\s+", " ");
+    }
+
+    private String normalizeClientKey(
+            String clientName
+    ) {
+        return normalizeClientName(clientName)
+                .toUpperCase(Locale.ROOT);
     }
 
     private String normalizePolicyNumber(
@@ -596,8 +673,8 @@ public class PolicyConsultationServiceImpl implements PolicyConsultationService 
 
         if (normalized.length() > 100) {
             throw new InvalidPolicyNumberException(
-                    "Le numéro de police ne doit pas dépasser "
-                            + "100 caractères."
+                    "Le numéro de police ne doit pas "
+                            + "dépasser 100 caractères."
             );
         }
 

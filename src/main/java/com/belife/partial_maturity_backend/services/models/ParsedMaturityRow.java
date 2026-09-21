@@ -4,22 +4,20 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Ligne CSV convertie en types métier.
+ * Représente une ligne valide lue depuis le fichier CSV.
  *
- * @param rowNumber numéro physique de la ligne dans le fichier
- * @param policyNumber numéro de police normalisé
- * @param maturityType type de maturité normalisé
- * @param maturityRank rang numérique extrait du type
- * @param maturityDate date de maturité
- * @param maturityAmount montant de maturité
- * @param interestEndDate date de fin de production des intérêts
+ * @param rowNumber numéro physique de la ligne
+ *                  dans le fichier CSV
+ * @param policyNumber numéro de police
+ * @param clientName nom du client
+ * @param maturityAmount montant de la maturité
+ * @param interestEndDate date commune de fin
+ *                        des intérêts de la police
  */
 public record ParsedMaturityRow(
         int rowNumber,
         String policyNumber,
-        String maturityType,
-        int maturityRank,
-        LocalDate maturityDate,
+        String clientName,
         BigDecimal maturityAmount,
         LocalDate interestEndDate
 ) {
