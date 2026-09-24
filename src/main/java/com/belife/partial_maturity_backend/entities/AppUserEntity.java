@@ -16,10 +16,7 @@ import java.time.Instant;
         name = "app_user",
         schema = "partial_maturity",
         uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uq_app_user_username",
-                        columnNames = "username"
-                )
+                @UniqueConstraint(name = "uq_app_user_username", columnNames = "username")
         }
 )
 public class AppUserEntity extends AuditableEntity {

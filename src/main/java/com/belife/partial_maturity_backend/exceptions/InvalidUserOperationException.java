@@ -8,8 +8,7 @@ package com.belife.partial_maturity_backend.exceptions;
  * - désactivation de son propre compte ;
  * - suppression du rôle du dernier ADMIN actif.
  */
-public class InvalidUserOperationException
-        extends RuntimeException {
+public class InvalidUserOperationException extends RuntimeException {
 
     public InvalidUserOperationException(String message) {
         super(message);

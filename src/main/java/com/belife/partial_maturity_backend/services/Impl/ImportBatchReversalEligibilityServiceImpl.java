@@ -54,11 +54,8 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
             );
         }
 
-        List<PolicyMaturityEntity> batchMaturities =
-                policyMaturityRepository
-                        .findAllByImportBatchIdOrderByPolicyNumberAscMaturityRankAsc(
-                                batch.getId()
-                        );
+        List<PolicyMaturityEntity> batchMaturities = policyMaturityRepository
+                        .findAllByImportBatchIdOrderByPolicyNumberAscMaturityRankAsc(batch.getId());
 
         if (batchMaturities.isEmpty()) {
             return ImportBatchReversalEligibility.blocked(
@@ -67,26 +64,14 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
             );
         }
 
-        Set<String> policyNumbers =
-                batchMaturities.stream()
-                        .map(
-                                PolicyMaturityEntity
-                                        ::getPolicyNumber
-                        )
+        Set<String> policyNumbers = batchMaturities.stream()
+                        .map(PolicyMaturityEntity::getPolicyNumber)
                         .collect(Collectors.toSet());
 
-        List<PaymentEntity> paidPayments =
-                paymentRepository
-                        .findAllByPolicyNumbersAndStatus(
-                                policyNumbers,
-                                PaymentStatus.PAID
-                        );
+        List<PaymentEntity> paidPayments = paymentRepository
+                        .findAllByPolicyNumbersAndStatus(policyNumbers, PaymentStatus.PAID);
 
-        List<String> blockingPolicyNumbers =
-                findBlockingPolicyNumbers(
-                        batchMaturities,
-                        paidPayments
-                );
+        List<String> blockingPolicyNumbers = findBlockingPolicyNumbers(batchMaturities, paidPayments);
 
         if (!blockingPolicyNumbers.isEmpty()) {
             return ImportBatchReversalEligibility.blocked(
@@ -103,59 +88,32 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
             );
         }
 
-        List<PolicyMaturityEntity> allMaturities =
-                policyMaturityRepository
-                        .findAllByPolicyNumberIn(
-                                policyNumbers
-                        );
+        List<PolicyMaturityEntity> allMaturities = policyMaturityRepository.findAllByPolicyNumberIn(policyNumbers);
 
         Map<String, List<PolicyMaturityEntity>>
-                maturitiesByPolicy =
-                allMaturities.stream()
+                maturitiesByPolicy = allMaturities.stream()
                         .collect(
                                 Collectors.groupingBy(
                                         maturity ->
-                                                normalizePolicyNumber(
-                                                        maturity.getPolicyNumber()
-                                                )
+                                                normalizePolicyNumber(maturity.getPolicyNumber())
                                 )
                         );
 
         for (String policyNumber : policyNumbers) {
-            List<PolicyMaturityEntity>
-                    remainingMaturities =
-                    maturitiesByPolicy
-                            .getOrDefault(
-                                    normalizePolicyNumber(
-                                            policyNumber
-                                    ),
-                                    List.of()
-                            )
+            List<PolicyMaturityEntity> remainingMaturities = maturitiesByPolicy
+                            .getOrDefault(normalizePolicyNumber(policyNumber), List.of())
                             .stream()
                             .filter(maturity ->
                                     maturity.getImportBatch()
                                             == null
                                             || !batch.getId()
-                                            .equals(
-                                                    maturity
-                                                            .getImportBatch()
-                                                            .getId()
-                                            )
+                                            .equals(maturity.getImportBatch().getId())
                             )
-                            .sorted(
-                                    Comparator.comparingInt(
-                                            PolicyMaturityEntity
-                                                    ::getMaturityRank
-                                    )
-                            )
+                            .sorted(Comparator.comparingInt(PolicyMaturityEntity::getMaturityRank))
                             .toList();
 
             ImportBatchReversalEligibility
-                    policyEligibility =
-                    validateRemainingPolicyState(
-                            policyNumber,
-                            remainingMaturities
-                    );
+                    policyEligibility = validateRemainingPolicyState(policyNumber, remainingMaturities);
 
             if (!policyEligibility.reversible()) {
                 return policyEligibility;
@@ -173,28 +131,14 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
      * est postérieure ou égale à la date d'au moins une
      * maturité du lot pour la même police.</p>
      */
-    private List<String> findBlockingPolicyNumbers(
-            List<PolicyMaturityEntity> batchMaturities,
-            List<PaymentEntity> paidPayments
-    ) {
-        Map<String, LocalDate>
-                firstBatchMaturityDateByPolicy =
-                buildFirstBatchMaturityDateIndex(
-                        batchMaturities
-                );
+    private List<String> findBlockingPolicyNumbers(List<PolicyMaturityEntity> batchMaturities, List<PaymentEntity> paidPayments) {
+        Map<String, LocalDate> firstBatchMaturityDateByPolicy = buildFirstBatchMaturityDateIndex(batchMaturities);
 
         return paidPayments.stream()
-                .filter(payment ->
-                        paymentUsesBatchMaturity(
-                                payment,
-                                firstBatchMaturityDateByPolicy
-                        )
-                )
+                .filter(payment ->paymentUsesBatchMaturity(payment, firstBatchMaturityDateByPolicy))
                 .map(PaymentEntity::getPolicyNumber)
                 .distinct()
-                .sorted(
-                        String.CASE_INSENSITIVE_ORDER
-                )
+                .sorted(String.CASE_INSENSITIVE_ORDER)
                 .toList();
     }
 
@@ -202,25 +146,13 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
      * Retourne la première date de maturité introduite
      * par le lot pour chaque police.
      */
-    private Map<String, LocalDate>
-    buildFirstBatchMaturityDateIndex(
-            List<PolicyMaturityEntity> batchMaturities
-    ) {
+    private Map<String, LocalDate> buildFirstBatchMaturityDateIndex(List<PolicyMaturityEntity> batchMaturities) {
         return batchMaturities.stream()
-                .collect(
-                        Collectors.toMap(
-                                maturity ->
-                                        normalizePolicyNumber(
-                                                maturity
-                                                        .getPolicyNumber()
-                                        ),
-                                PolicyMaturityEntity
-                                        ::getMaturityDate,
-                                (currentEarliestDate,
-                                 candidateDate) ->
-                                        candidateDate.isBefore(
-                                                currentEarliestDate
-                                        )
+                .collect(Collectors.toMap(
+                                maturity -> normalizePolicyNumber(maturity.getPolicyNumber()),
+                                PolicyMaturityEntity::getMaturityDate,
+                                (currentEarliestDate, candidateDate)
+                                        -> candidateDate.isBefore(currentEarliestDate)
                                                 ? candidateDate
                                                 : currentEarliestDate
                         )
@@ -231,17 +163,8 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
      * Vérifie si un paiement a pu utiliser une maturité
      * introduite par le lot.
      */
-    private boolean paymentUsesBatchMaturity(
-            PaymentEntity payment,
-            Map<String, LocalDate>
-                    firstBatchMaturityDateByPolicy
-    ) {
-        LocalDate firstBatchMaturityDate =
-                firstBatchMaturityDateByPolicy.get(
-                        normalizePolicyNumber(
-                                payment.getPolicyNumber()
-                        )
-                );
+    private boolean paymentUsesBatchMaturity(PaymentEntity payment, Map<String, LocalDate> firstBatchMaturityDateByPolicy) {
+        LocalDate firstBatchMaturityDate = firstBatchMaturityDateByPolicy.get(normalizePolicyNumber(payment.getPolicyNumber()));
 
         if (firstBatchMaturityDate == null) {
             return false;
@@ -251,33 +174,22 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
          * Une maturité est appliquée avant un paiement
          * lorsque les deux événements possèdent la même date.
          */
-        return !payment.getPaymentDate()
-                .isBefore(firstBatchMaturityDate);
+        return !payment.getPaymentDate().isBefore(firstBatchMaturityDate);
     }
 
     /**
      * Une police sans maturité restante est valide :
      * elle disparaîtra simplement de la consultation.
      */
-    private ImportBatchReversalEligibility
-    validateRemainingPolicyState(
-            String policyNumber,
-            List<PolicyMaturityEntity> maturities
-    ) {
+    private ImportBatchReversalEligibility validateRemainingPolicyState(String policyNumber, List<PolicyMaturityEntity> maturities) {
         if (maturities.isEmpty()) {
             return ImportBatchReversalEligibility.allowed();
         }
 
-        for (
-                int index = 0;
-                index < maturities.size();
-                index++
-        ) {
+        for (int index = 0; index < maturities.size(); index++) {
             int expectedRank = index + 1;
 
-            int actualRank =
-                    maturities.get(index)
-                            .getMaturityRank();
+            int actualRank = maturities.get(index).getMaturityRank();
 
             if (actualRank != expectedRank) {
                 return ImportBatchReversalEligibility.blocked(
@@ -293,41 +205,12 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
             }
         }
 
-        for (
-                int index = 1;
-                index < maturities.size();
-                index++
-        ) {
-            LocalDate previousDate =
-                    maturities.get(index - 1)
-                            .getMaturityDate();
 
-            LocalDate currentDate =
-                    maturities.get(index)
-                            .getMaturityDate();
+        LocalDate expectedInterestEndDate = maturities.getFirst().getInterestEndDate();
 
-            if (!currentDate.isAfter(previousDate)) {
-                return ImportBatchReversalEligibility.blocked(
-                        "Ce chargement ne peut pas être annulé, "
-                                + "car les dates restantes de la police "
-                                + policyNumber
-                                + " ne seraient plus strictement "
-                                + "croissantes."
-                );
-            }
-        }
-
-        LocalDate expectedInterestEndDate =
-                maturities.getFirst()
-                        .getInterestEndDate();
-
-        boolean inconsistentInterestEndDate =
-                maturities.stream()
+        boolean inconsistentInterestEndDate = maturities.stream()
                         .anyMatch(maturity ->
-                                !expectedInterestEndDate.equals(
-                                        maturity
-                                                .getInterestEndDate()
-                                )
+                                !expectedInterestEndDate.equals(maturity.getInterestEndDate())
                         );
 
         if (inconsistentInterestEndDate) {
@@ -343,11 +226,7 @@ public class ImportBatchReversalEligibilityServiceImpl implements ImportBatchRev
         return ImportBatchReversalEligibility.allowed();
     }
 
-    private String normalizePolicyNumber(
-            String policyNumber
-    ) {
-        return policyNumber
-                .trim()
-                .toUpperCase(Locale.ROOT);
+    private String normalizePolicyNumber(String policyNumber) {
+        return policyNumber.trim().toUpperCase(Locale.ROOT);
     }
 }

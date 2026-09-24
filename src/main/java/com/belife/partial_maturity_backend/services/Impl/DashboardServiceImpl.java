@@ -55,33 +55,25 @@ import static com.belife.partial_maturity_backend.utils.FinancialAmountUtils.zer
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class DashboardServiceImpl
-        implements DashboardService {
+public class DashboardServiceImpl implements DashboardService {
 
     private static final int RECENT_ITEM_LIMIT = 5;
 
     private static final int MONTH_COUNT = 12;
 
-    private static final BigDecimal ONE_HUNDRED =
-            new BigDecimal("100");
+    private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
 
-    private final PolicyMaturityRepository
-            policyMaturityRepository;
+    private final PolicyMaturityRepository policyMaturityRepository;
 
-    private final PaymentRepository
-            paymentRepository;
+    private final PaymentRepository paymentRepository;
 
-    private final ImportBatchRepository
-            importBatchRepository;
+    private final ImportBatchRepository importBatchRepository;
 
-    private final InterestCalculationEngine
-            interestCalculationEngine;
+    private final InterestCalculationEngine interestCalculationEngine;
 
-    private final InterestProperties
-            interestProperties;
+    private final InterestProperties interestProperties;
 
-    private final BusinessDateProvider
-            businessDateProvider;
+    private final BusinessDateProvider businessDateProvider;
 
     /**
      * Retourne la synthèse commune du portefeuille,
@@ -89,8 +81,7 @@ public class DashboardServiceImpl
      */
     @Override
     public DashboardResponse getDashboard() {
-        LocalDate calculationDate =
-                businessDateProvider.currentDate();
+        LocalDate calculationDate = businessDateProvider.currentDate();
 
         /*
          * Les maturités actives sont chargées une seule fois.
@@ -101,23 +92,14 @@ public class DashboardServiceImpl
                 policyMaturityRepository
                         .findAllByOrderByPolicyNumberAscMaturityRankAsc();
 
-        Map<String, List<PolicyMaturityEntity>>
-                maturitiesByPolicy =
-                groupMaturitiesByPolicy(
-                        allMaturities
-                );
+        Map<String, List<PolicyMaturityEntity>> maturitiesByPolicy = groupMaturitiesByPolicy(allMaturities);
 
         Set<String> storedPolicyNumbers =
                 maturitiesByPolicy.values()
                         .stream()
-                        .filter(maturities ->
-                                !maturities.isEmpty()
-                        )
+                        .filter(maturities -> !maturities.isEmpty())
                         .map(List::getFirst)
-                        .map(
-                                PolicyMaturityEntity
-                                        ::getPolicyNumber
-                        )
+                        .map(PolicyMaturityEntity::getPolicyNumber)
                         .collect(Collectors.toSet());
 
         /*
@@ -128,14 +110,9 @@ public class DashboardServiceImpl
          * - aux statistiques mensuelles ;
          * - à l'historique récent.
          */
-        List<PaymentEntity> allPaidPayments =
-                storedPolicyNumbers.isEmpty()
+        List<PaymentEntity> allPaidPayments = storedPolicyNumbers.isEmpty()
                         ? List.of()
-                        : paymentRepository
-                          .findAllByPolicyNumbersAndStatus(
-                                  storedPolicyNumbers,
-                                  PaymentStatus.PAID
-                          );
+                        : paymentRepository.findAllByPolicyNumbersAndStatus(storedPolicyNumbers, PaymentStatus.PAID);
 
         /*
          * Lorsqu'une date métier antérieure est simulée
@@ -145,51 +122,26 @@ public class DashboardServiceImpl
          */
         List<PaymentEntity> paidPaymentsAtCalculationDate =
                 allPaidPayments.stream()
-                        .filter(payment ->
-                                !payment.getPaymentDate()
-                                        .isAfter(
-                                                calculationDate
-                                        )
-                        )
+                        .filter(payment -> !payment.getPaymentDate().isAfter(calculationDate))
                         .toList();
 
-        Map<String, List<PaymentEntity>>
-                paidPaymentsByPolicy =
-                groupPaymentsByPolicy(
-                        paidPaymentsAtCalculationDate
-                );
+        Map<String, List<PaymentEntity>> paidPaymentsByPolicy = groupPaymentsByPolicy(paidPaymentsAtCalculationDate);
 
-        BigDecimal totalMaturityAmount =
-                sumMaturityAmounts(
-                        allMaturities
-                );
+        BigDecimal totalMaturityAmount = sumMaturityAmounts(allMaturities);
 
-        BigDecimal totalPaidInterest =
-                sumPaidInterest(
-                        paidPaymentsAtCalculationDate
-                );
+        BigDecimal totalPaidInterest = sumPaidInterest(paidPaymentsAtCalculationDate);
 
-        BigDecimal totalPaidAmount =
-                sumPaidAmounts(
-                        paidPaymentsAtCalculationDate
-                );
+        BigDecimal totalPaidAmount = sumPaidAmounts(paidPaymentsAtCalculationDate);
 
-        BigDecimal totalOpenInterest =
-                calculateTotalOpenInterest(
+        BigDecimal totalOpenInterest = calculateTotalOpenInterest(
                         maturitiesByPolicy,
                         paidPaymentsByPolicy,
                         calculationDate
                 );
 
-        BigDecimal totalGeneratedInterest =
-                normalize(
-                        totalOpenInterest.add(
-                                totalPaidInterest
-                        )
-                );
+        BigDecimal totalGeneratedInterest = normalize(totalOpenInterest.add(totalPaidInterest));
 
-        DashboardMetricsResponse metrics =
-                new DashboardMetricsResponse(
+        DashboardMetricsResponse metrics = new DashboardMetricsResponse(
                         maturitiesByPolicy.size(),
                         allMaturities.size(),
                         totalMaturityAmount,
@@ -199,27 +151,14 @@ public class DashboardServiceImpl
                 );
 
         InterestDistributionResponse
-                interestDistribution =
-                buildInterestDistribution(
-                        totalOpenInterest,
-                        totalPaidInterest,
-                        totalGeneratedInterest
-                );
+                interestDistribution = buildInterestDistribution(totalOpenInterest, totalPaidInterest, totalGeneratedInterest);
 
         List<MonthlyPaymentStatisticResponse>
-                monthlyPayments =
-                buildMonthlyPaymentStatistics(
-                        paidPaymentsAtCalculationDate,
-                        calculationDate
-                );
+                monthlyPayments = buildMonthlyPaymentStatistics(paidPaymentsAtCalculationDate, calculationDate);
 
-        List<RecentImportResponse> recentImports =
-                buildRecentImports();
+        List<RecentImportResponse> recentImports = buildRecentImports();
 
-        List<RecentPaymentResponse> recentPayments =
-                buildRecentPayments(
-                        paidPaymentsAtCalculationDate
-                );
+        List<RecentPaymentResponse> recentPayments = buildRecentPayments(paidPaymentsAtCalculationDate);
 
         return new DashboardResponse(
                 calculationDate,
@@ -239,51 +178,28 @@ public class DashboardServiceImpl
      * de clôture des intérêts.</p>
      */
     private BigDecimal calculateTotalOpenInterest(
-            Map<String, List<PolicyMaturityEntity>>
-                    maturitiesByPolicy,
-            Map<String, List<PaymentEntity>>
-                    paidPaymentsByPolicy,
+            Map<String, List<PolicyMaturityEntity>> maturitiesByPolicy,
+            Map<String, List<PaymentEntity>> paidPaymentsByPolicy,
             LocalDate calculationDate
     ) {
-        BigDecimal totalOpenInterest =
-                zero();
+        BigDecimal totalOpenInterest = zero();
 
-        for (
-                List<PolicyMaturityEntity> maturities
-                : maturitiesByPolicy.values()
-        ) {
+        for (List<PolicyMaturityEntity> maturities : maturitiesByPolicy.values()) {
             if (maturities.isEmpty()) {
                 continue;
             }
 
-            PolicyMaturityEntity firstMaturity =
-                    maturities.getFirst();
+            PolicyMaturityEntity firstMaturity = maturities.getFirst();
 
-            String policyNumber =
-                    firstMaturity.getPolicyNumber();
+            String policyNumber = firstMaturity.getPolicyNumber();
 
-            String normalizedPolicyNumber =
-                    normalizePolicyNumber(
-                            policyNumber
-                    );
+            String normalizedPolicyNumber = normalizePolicyNumber(policyNumber);
 
-            List<PaymentEntity> policyPayments =
-                    paidPaymentsByPolicy
-                            .getOrDefault(
-                                    normalizedPolicyNumber,
-                                    List.of()
-                            );
+            List<PaymentEntity> policyPayments = paidPaymentsByPolicy.getOrDefault(normalizedPolicyNumber, List.of());
 
-            LocalDate interestEndDate =
-                    resolveInterestEndDate(
-                            maturities
-                    );
+            LocalDate interestEndDate = resolveInterestEndDate(maturities);
 
-            List<CalculationEvent> events =
-                    buildCalculationEvents(
-                            maturities,
-                            policyPayments
-                    );
+            List<CalculationEvent> events = buildCalculationEvents(maturities, policyPayments);
 
             InterestSimulationResponse simulation =
                     interestCalculationEngine.calculate(
@@ -294,10 +210,7 @@ public class DashboardServiceImpl
                             events
                     );
 
-            totalOpenInterest =
-                    totalOpenInterest.add(
-                            simulation.openInterest()
-                    );
+            totalOpenInterest =totalOpenInterest.add(simulation.openInterest());
         }
 
         return normalize(totalOpenInterest);
@@ -307,17 +220,12 @@ public class DashboardServiceImpl
      * Construit la répartition utilisée par
      * le graphique des intérêts.
      */
-    private InterestDistributionResponse
-    buildInterestDistribution(
+    private InterestDistributionResponse buildInterestDistribution(
             BigDecimal openInterest,
             BigDecimal paidInterest,
             BigDecimal generatedInterest
     ) {
-        BigDecimal paidPercentage =
-                calculatePaidPercentage(
-                        paidInterest,
-                        generatedInterest
-                );
+        BigDecimal paidPercentage = calculatePaidPercentage(paidInterest, generatedInterest);
 
         return new InterestDistributionResponse(
                 normalize(openInterest),
@@ -330,22 +238,14 @@ public class DashboardServiceImpl
     /**
      * Retourne un pourcentage compris entre 0 et 100.
      */
-    private BigDecimal calculatePaidPercentage(
-            BigDecimal paidInterest,
-            BigDecimal generatedInterest
-    ) {
+    private BigDecimal calculatePaidPercentage(BigDecimal paidInterest, BigDecimal generatedInterest) {
         if (generatedInterest.signum() <= 0) {
             return zero();
         }
 
-        BigDecimal percentage =
-                paidInterest
+        BigDecimal percentage = paidInterest
                         .multiply(ONE_HUNDRED)
-                        .divide(
-                                generatedInterest,
-                                6,
-                                RoundingMode.HALF_UP
-                        );
+                        .divide(generatedInterest,6, RoundingMode.HALF_UP);
 
         /*
          * Protection défensive en cas de données
@@ -355,22 +255,11 @@ public class DashboardServiceImpl
             return zero();
         }
 
-        if (
-                percentage.compareTo(
-                        ONE_HUNDRED
-                ) > 0
-        ) {
-            return ONE_HUNDRED
-                    .setScale(
-                            6,
-                            RoundingMode.HALF_UP
-                    );
+        if (percentage.compareTo(ONE_HUNDRED) > 0 ) {
+            return ONE_HUNDRED.setScale(6, RoundingMode.HALF_UP);
         }
 
-        return percentage.setScale(
-                6,
-                RoundingMode.HALF_UP
-        );
+        return percentage.setScale(6,RoundingMode.HALF_UP);
     }
 
     /**
@@ -378,48 +267,23 @@ public class DashboardServiceImpl
      * y compris lorsqu'un mois ne possède aucun paiement.
      */
     private List<MonthlyPaymentStatisticResponse>
-    buildMonthlyPaymentStatistics(
-            List<PaymentEntity> paidPayments,
-            LocalDate calculationDate
-    ) {
-        YearMonth currentMonth =
-                YearMonth.from(
-                        calculationDate
-                );
+    buildMonthlyPaymentStatistics(List<PaymentEntity> paidPayments, LocalDate calculationDate) {
+        YearMonth currentMonth = YearMonth.from(calculationDate);
 
-        YearMonth firstMonth =
-                currentMonth.minusMonths(
-                        MONTH_COUNT - 1L
-                );
+        YearMonth firstMonth = currentMonth.minusMonths(MONTH_COUNT - 1L);
 
-        Map<YearMonth, MutableMonthlyPaymentStatistic>
-                statisticsByMonth =
-                new LinkedHashMap<>();
+        Map<YearMonth, MutableMonthlyPaymentStatistic> statisticsByMonth = new LinkedHashMap<>();
 
-        for (
-                int index = 0;
-                index < MONTH_COUNT;
-                index++
-        ) {
-            YearMonth month =
-                    firstMonth.plusMonths(index);
+        for (int index = 0; index < MONTH_COUNT; index++) {
+            YearMonth month = firstMonth.plusMonths(index);
 
-            statisticsByMonth.put(
-                    month,
-                    new MutableMonthlyPaymentStatistic()
-            );
+            statisticsByMonth.put( month, new MutableMonthlyPaymentStatistic());
         }
 
         for (PaymentEntity payment : paidPayments) {
-            YearMonth paymentMonth =
-                    YearMonth.from(
-                            payment.getPaymentDate()
-                    );
+            YearMonth paymentMonth = YearMonth.from(payment.getPaymentDate());
 
-            MutableMonthlyPaymentStatistic statistic =
-                    statisticsByMonth.get(
-                            paymentMonth
-                    );
+            MutableMonthlyPaymentStatistic statistic = statisticsByMonth.get(paymentMonth);
 
             if (statistic == null) {
                 continue;
@@ -433,18 +297,10 @@ public class DashboardServiceImpl
                 .stream()
                 .map(entry ->
                         new MonthlyPaymentStatisticResponse(
-                                entry.getKey()
-                                        .toString(),
-                                entry.getValue()
-                                        .paymentCount,
-                                normalize(
-                                        entry.getValue()
-                                                .paidAmount
-                                ),
-                                normalize(
-                                        entry.getValue()
-                                                .interestAmount
-                                )
+                                entry.getKey().toString(),
+                                entry.getValue().paymentCount,
+                                normalize(entry.getValue().paidAmount),
+                                normalize(entry.getValue().interestAmount)
                         )
                 )
                 .toList();
@@ -454,15 +310,9 @@ public class DashboardServiceImpl
      * Retourne les cinq derniers chargements,
      * tous statuts confondus.
      */
-    private List<RecentImportResponse>
-    buildRecentImports() {
+    private List<RecentImportResponse> buildRecentImports() {
         return importBatchRepository
-                .findRecentImports(
-                        PageRequest.of(
-                                0,
-                                RECENT_ITEM_LIMIT
-                        )
-                )
+                .findRecentImports(PageRequest.of(0, RECENT_ITEM_LIMIT))
                 .stream()
                 .map(this::toRecentImport)
                 .toList();
@@ -472,12 +322,8 @@ public class DashboardServiceImpl
      * Pour un chargement annulé, la date et l'acteur
      * représentatifs sont ceux de la réversion.
      */
-    private RecentImportResponse toRecentImport(
-            ImportBatchEntity batch
-    ) {
-        boolean reversed =
-                batch.getStatus()
-                        == ImportBatchStatus.REVERSED;
+    private RecentImportResponse toRecentImport(ImportBatchEntity batch) {
+        boolean reversed = batch.getStatus() == ImportBatchStatus.REVERSED;
 
         return new RecentImportResponse(
                 batch.getId(),
@@ -495,9 +341,7 @@ public class DashboardServiceImpl
         );
     }
 
-    private String resolveImportActor(
-            ImportBatchEntity batch
-    ) {
+    private String resolveImportActor(ImportBatchEntity batch) {
         if (
                 batch.getImportedBy() != null
                         && !batch.getImportedBy()
@@ -514,19 +358,12 @@ public class DashboardServiceImpl
      * à la date métier du dashboard.
      */
     private List<RecentPaymentResponse>
-    buildRecentPayments(
-            List<PaymentEntity> paidPayments
-    ) {
+    buildRecentPayments(List<PaymentEntity> paidPayments) {
         return paidPayments.stream()
                 .sorted(
                         Comparator
-                                .comparing(
-                                        PaymentEntity
-                                                ::getPaymentDate
-                                )
-                                .thenComparing(
-                                        PaymentEntity::getId
-                                )
+                                .comparing(PaymentEntity::getPaymentDate)
+                                .thenComparing(PaymentEntity::getId)
                                 .reversed()
                 )
                 .limit(RECENT_ITEM_LIMIT)
@@ -534,38 +371,24 @@ public class DashboardServiceImpl
                 .toList();
     }
 
-    private RecentPaymentResponse toRecentPayment(
-            PaymentEntity payment
-    ) {
+    private RecentPaymentResponse toRecentPayment(PaymentEntity payment) {
         return new RecentPaymentResponse(
                 payment.getId(),
                 payment.getPolicyNumber(),
                 payment.getPaymentDate(),
-                normalize(
-                        payment.getCapitalAmount()
-                ),
-                normalize(
-                        payment.getInterestAmount()
-                ),
-                normalize(
-                        payment.getPaidAmount()
-                ),
+                normalize(payment.getCapitalAmount()),
+                normalize(payment.getInterestAmount()),
+                normalize(payment.getPaidAmount()),
                 payment.getCreatedBy()
         );
     }
 
     private Map<String, List<PolicyMaturityEntity>>
-    groupMaturitiesByPolicy(
-            List<PolicyMaturityEntity> maturities
-    ) {
+    groupMaturitiesByPolicy(List<PolicyMaturityEntity> maturities) {
         return maturities.stream()
                 .collect(
                         Collectors.groupingBy(
-                                maturity ->
-                                        normalizePolicyNumber(
-                                                maturity
-                                                        .getPolicyNumber()
-                                        ),
+                                maturity ->normalizePolicyNumber(maturity.getPolicyNumber()),
                                 LinkedHashMap::new,
                                 Collectors.toList()
                         )
@@ -573,17 +396,11 @@ public class DashboardServiceImpl
     }
 
     private Map<String, List<PaymentEntity>>
-    groupPaymentsByPolicy(
-            List<PaymentEntity> payments
-    ) {
+    groupPaymentsByPolicy(List<PaymentEntity> payments) {
         return payments.stream()
                 .collect(
                         Collectors.groupingBy(
-                                payment ->
-                                        normalizePolicyNumber(
-                                                payment
-                                                        .getPolicyNumber()
-                                        ),
+                                payment -> normalizePolicyNumber(payment.getPolicyNumber()),
                                 LinkedHashMap::new,
                                 Collectors.toList()
                         )
@@ -591,98 +408,59 @@ public class DashboardServiceImpl
     }
 
     private List<CalculationEvent>
-    buildCalculationEvents(
-            List<PolicyMaturityEntity> maturities,
-            List<PaymentEntity> paidPayments
-    ) {
-        List<CalculationEvent> events =
-                new ArrayList<>();
+    buildCalculationEvents(List<PolicyMaturityEntity> maturities, List<PaymentEntity> paidPayments) {
+        List<CalculationEvent> events = new ArrayList<>();
 
-        maturities.stream()
-                .map(this::toMaturityEvent)
-                .forEach(events::add);
+        maturities.stream().map(this::toMaturityEvent).forEach(events::add);
 
-        paidPayments.stream()
-                .map(this::toPaymentEvent)
-                .forEach(events::add);
+        paidPayments.stream().map(this::toPaymentEvent).forEach(events::add);
 
         return events;
     }
 
-    private CalculationEvent toMaturityEvent(
-            PolicyMaturityEntity maturity
-    ) {
+    private CalculationEvent toMaturityEvent(PolicyMaturityEntity maturity) {
         return new CalculationEvent(
                 maturity.getId(),
                 maturity.getMaturityDate(),
-                CalculationEvent.EventKind
-                        .MATURITY,
+                CalculationEvent.EventKind.MATURITY,
                 maturity.getMaturityRank(),
                 maturity.getMaturityType(),
                 maturity.getMaturityAmount()
         );
     }
 
-    private CalculationEvent toPaymentEvent(
-            PaymentEntity payment
-    ) {
+    private CalculationEvent toPaymentEvent(PaymentEntity payment) {
         return new CalculationEvent(
                 payment.getId(),
                 payment.getPaymentDate(),
-                CalculationEvent.EventKind
-                        .PAYMENT,
+                CalculationEvent.EventKind.PAYMENT,
                 0,
-                "Paiement n° "
-                        + payment.getId(),
+                "Paiement n° " + payment.getId(),
                 payment.getPaidAmount()
         );
     }
 
-    private BigDecimal sumMaturityAmounts(
-            List<PolicyMaturityEntity> maturities
-    ) {
+    private BigDecimal sumMaturityAmounts(List<PolicyMaturityEntity> maturities) {
         return normalize(
                 maturities.stream()
-                        .map(
-                                PolicyMaturityEntity
-                                        ::getMaturityAmount
-                        )
-                        .reduce(
-                                zero(),
-                                BigDecimal::add
-                        )
+                        .map(PolicyMaturityEntity::getMaturityAmount)
+                        .reduce(zero(), BigDecimal::add)
         );
     }
 
-    private BigDecimal sumPaidInterest(
-            List<PaymentEntity> payments
-    ) {
+    private BigDecimal sumPaidInterest(List<PaymentEntity> payments) {
         return normalize(
                 payments.stream()
-                        .map(
-                                PaymentEntity
-                                        ::getInterestAmount
-                        )
-                        .reduce(
-                                zero(),
-                                BigDecimal::add
-                        )
+                        .map(PaymentEntity::getInterestAmount)
+                        .reduce(zero(),BigDecimal::add)
         );
     }
 
-    private BigDecimal sumPaidAmounts(
-            List<PaymentEntity> payments
-    ) {
+    private BigDecimal sumPaidAmounts(List<PaymentEntity> payments) {
         return normalize(
                 payments.stream()
-                        .map(
-                                PaymentEntity
-                                        ::getPaidAmount
-                        )
-                        .reduce(
-                                zero(),
-                                BigDecimal::add
-                        )
+                        .map( PaymentEntity::getPaidAmount)
+                        .reduce(zero(), BigDecimal::add)
         );
     }
 
@@ -690,21 +468,11 @@ public class DashboardServiceImpl
      * Vérification défensive de la date commune
      * de fin des intérêts.
      */
-    private LocalDate resolveInterestEndDate(
-            List<PolicyMaturityEntity> maturities
-    ) {
-        LocalDate expectedInterestEndDate =
-                maturities.getFirst()
-                        .getInterestEndDate();
+    private LocalDate resolveInterestEndDate(List<PolicyMaturityEntity> maturities) {
+        LocalDate expectedInterestEndDate = maturities.getFirst().getInterestEndDate();
 
-        boolean inconsistentDate =
-                maturities.stream()
-                        .anyMatch(maturity ->
-                                !expectedInterestEndDate.equals(
-                                        maturity
-                                                .getInterestEndDate()
-                                )
-                        );
+        boolean inconsistentDate = maturities.stream()
+                        .anyMatch(maturity -> !expectedInterestEndDate.equals(maturity.getInterestEndDate()));
 
         if (inconsistentDate) {
             throw new IllegalStateException(
@@ -719,12 +487,8 @@ public class DashboardServiceImpl
         return expectedInterestEndDate;
     }
 
-    private String normalizePolicyNumber(
-            String policyNumber
-    ) {
-        return policyNumber
-                .trim()
-                .toUpperCase(Locale.ROOT);
+    private String normalizePolicyNumber(String policyNumber) {
+        return policyNumber.trim().toUpperCase(Locale.ROOT);
     }
 
     /**
@@ -736,26 +500,16 @@ public class DashboardServiceImpl
 
         private long paymentCount;
 
-        private BigDecimal paidAmount =
-                zero();
+        private BigDecimal paidAmount = zero();
 
-        private BigDecimal interestAmount =
-                zero();
+        private BigDecimal interestAmount = zero();
 
-        private void addPayment(
-                PaymentEntity payment
-        ) {
+        private void addPayment(PaymentEntity payment) {
             paymentCount++;
 
-            paidAmount =
-                    paidAmount.add(
-                            payment.getPaidAmount()
-                    );
+            paidAmount = paidAmount.add(payment.getPaidAmount());
 
-            interestAmount =
-                    interestAmount.add(
-                            payment.getInterestAmount()
-                    );
+            interestAmount = interestAmount.add(payment.getInterestAmount());
         }
     }
 }

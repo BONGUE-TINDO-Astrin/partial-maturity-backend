@@ -96,9 +96,7 @@ public class AuditServiceImpl implements AuditService {
         }
 
         if (command.summary() == null || command.summary().isBlank()) {
-            throw new AuditRecordingException(
-                    "Le résumé de l'événement d'audit est obligatoire."
-            );
+            throw new AuditRecordingException("Le résumé de l'événement d'audit est obligatoire.");
         }
 
         String resourceId = command.resourceId().trim();
@@ -108,21 +106,15 @@ public class AuditServiceImpl implements AuditService {
         String summary = command.summary().trim();
 
         if (resourceId.length() > 100) {
-            throw new AuditRecordingException(
-                    "L'identifiant de la ressource auditée ne doit pas dépasser 100 caractères."
-            );
+            throw new AuditRecordingException("L'identifiant de la ressource auditée ne doit pas dépasser 100 caractères.");
         }
 
         if (actorUsername.length() > 100) {
-            throw new AuditRecordingException(
-                "Le nom de l'acteur ne doit pas dépasser 100 caractères."
-            );
+            throw new AuditRecordingException("Le nom de l'acteur ne doit pas dépasser 100 caractères.");
         }
 
         if (summary.length() > 500) {
-            throw new AuditRecordingException(
-                "Le résumé de l'événement ne doit pas dépasser 500 caractères."
-            );
+            throw new AuditRecordingException("Le résumé de l'événement ne doit pas dépasser 500 caractères.");
         }
 
         if (
@@ -131,9 +123,7 @@ public class AuditServiceImpl implements AuditService {
                 .trim()
                 .length() > 100
         ) {
-            throw new AuditRecordingException(
-                    "Le numéro de police audité ne doit pas dépasser 100 caractères."
-            );
+            throw new AuditRecordingException("Le numéro de police audité ne doit pas dépasser 100 caractères.");
         }
     }
 

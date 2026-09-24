@@ -4,8 +4,7 @@ package com.belife.partial_maturity_backend.exceptions;
  * Indique qu'un chargement ou les polices concernées
  * sont simultanément modifiés par une autre opération.
  */
-public class ConcurrentImportBatchOperationException
-        extends RuntimeException {
+public class ConcurrentImportBatchOperationException extends RuntimeException {
 
     public ConcurrentImportBatchOperationException() {
         super(

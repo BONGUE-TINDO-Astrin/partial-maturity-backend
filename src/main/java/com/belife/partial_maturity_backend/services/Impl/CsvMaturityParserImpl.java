@@ -31,9 +31,6 @@ import java.util.Optional;
 
 /**
  * Parse et valide les fichiers CSV de maturités.
- *
- * <p>Les colonnes supplémentaires sont acceptées
- * et ignorées.</p>
  */
 @Slf4j
 @Service
@@ -43,22 +40,23 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
 
     private static final String CLIENT_NAME_HEADER = "nom_client";
 
+    private static final String MATURITY_DATE_HEADER = "date_maturite";
+
     private static final String MATURITY_AMOUNT_HEADER = "montant_maturite";
 
     private static final String INTEREST_END_DATE_HEADER = "date_fin_interets";
 
-    private static final List<String> REQUIRED_HEADERS =
-            List.of(
+    private static final List<String> REQUIRED_HEADERS = List.of(
                     POLICY_NUMBER_HEADER,
                     CLIENT_NAME_HEADER,
+                    MATURITY_DATE_HEADER,
                     MATURITY_AMOUNT_HEADER,
                     INTEREST_END_DATE_HEADER
             );
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
 
-    private static final CSVFormat CSV_FORMAT =
-            CSVFormat.RFC4180
+    private static final CSVFormat CSV_FORMAT = CSVFormat.RFC4180
                     .builder()
                     .setDelimiter(';')
                     .setHeader()
@@ -74,66 +72,36 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
 
         List<CsvValidationError> errors = new ArrayList<>();
 
-        validateFileMetadata(file, errors);
+        validateFile(file, errors);
 
         if (!errors.isEmpty()) {
-            return new CsvValidationResult(
-                    0,
-                    rows,
-                    errors
-            );
+            return new CsvValidationResult(0, rows, errors);
         }
 
         int totalRows = 0;
 
         try (
-                Reader reader =
-                        createUtf8Reader(file);
-
-                CSVParser parser =
-                        CSV_FORMAT.parse(reader)
+                Reader reader = createUtf8Reader(file);
+                CSVParser parser = CSV_FORMAT.parse(reader)
         ) {
-            Map<String, String> headers =
-                    validateAndMapHeaders(
-                            parser.getHeaderNames(),
-                            errors
-                    );
+            Map<String, String> headers = validateHeaders(parser.getHeaderNames(), errors);
 
             if (!errors.isEmpty()) {
-                return new CsvValidationResult(
-                        totalRows,
-                        rows,
-                        errors
-                );
+                return new CsvValidationResult(totalRows, rows, errors);
             }
 
             for (CSVRecord record : parser) {
                 totalRows++;
 
-                parseRecord(
-                        record,
-                        headers,
-                        rows,
-                        errors
-                );
+                parseRecord(record, headers, rows, errors);
             }
 
-            validatePolicyClientNames(
-                    rows,
-                    errors
-            );
+            validatePolicyClientNames(rows, errors);
 
-            validatePolicyInterestEndDates(
-                    rows,
-                    errors
-            );
+            validatePolicyInterestEndDates(rows,errors);
 
-            if (
-                    totalRows == 0
-                            && errors.isEmpty()
-            ) {
-                errors.add(
-                        new CsvValidationError(
+            if (totalRows == 0 && errors.isEmpty()) {
+                errors.add(new CsvValidationError(
                                 0,
                                 "",
                                 "EMPTY_FILE",
@@ -143,11 +111,7 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
                 );
             }
 
-            return new CsvValidationResult(
-                    totalRows,
-                    rows,
-                    errors
-            );
+            return new CsvValidationResult(totalRows, rows, errors);
         } catch (IOException exception) {
             throw new CsvFileProcessingException(
                     "Le fichier CSV ne peut pas être lu.",
@@ -167,14 +131,8 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
     }
 
-    private void validateFileMetadata(
-            MultipartFile file,
-            List<CsvValidationError> errors
-    ) {
-        if (
-                file == null
-                        || file.isEmpty()
-        ) {
+    private void validateFile(MultipartFile file, List<CsvValidationError> errors) {
+        if (file == null || file.isEmpty()) {
             errors.add(
                     new CsvValidationError(
                             0,
@@ -187,17 +145,9 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
             return;
         }
 
-        String fileName =
-                Optional.ofNullable(
-                                file.getOriginalFilename()
-                        )
-                        .orElse("");
+        String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("");
 
-        if (
-                !fileName
-                        .toLowerCase(Locale.ROOT)
-                        .endsWith(".csv")
-        ) {
+        if (!fileName.toLowerCase(Locale.ROOT).endsWith(".csv")) {
             errors.add(
                     new CsvValidationError(
                             0,
@@ -210,32 +160,19 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
     }
 
-    /**
-     * Vérifie la présence des colonnes obligatoires.
-     * Leur ordre est libre.
-     */
-    private Map<String, String> validateAndMapHeaders(
-            List<String> actualHeaders,
-            List<CsvValidationError> errors
-    ) {
-        Map<String, String> headerMapping =
-                new LinkedHashMap<>();
+    private Map<String, String> validateHeaders(List<String> actualHeaders, List<CsvValidationError> errors) {
+        Map<String, String> headers = new LinkedHashMap<>();
 
         for (String actualHeader : actualHeaders) {
-            String normalizedHeader =
-                    normalizeHeader(actualHeader);
+            String normalizedHeader = normalizeHeader(actualHeader);
 
             if (normalizedHeader.isBlank()) {
                 continue;
             }
 
-            String previousHeader =
-                    headerMapping.putIfAbsent(
-                            normalizedHeader,
-                            actualHeader
-                    );
+            String existingHeader = headers.putIfAbsent(normalizedHeader, actualHeader);
 
-            if (previousHeader != null) {
+            if (existingHeader != null) {
                 errors.add(
                         new CsvValidationError(
                                 1,
@@ -250,11 +187,7 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
 
         for (String requiredHeader : REQUIRED_HEADERS) {
-            if (
-                    !headerMapping.containsKey(
-                            requiredHeader
-                    )
-            ) {
+            if (!headers.containsKey(requiredHeader)) {
                 errors.add(
                         new CsvValidationError(
                                 1,
@@ -268,7 +201,7 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
             }
         }
 
-        return Map.copyOf(headerMapping);
+        return Map.copyOf(headers);
     }
 
     private void parseRecord(
@@ -277,71 +210,60 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
             List<ParsedMaturityRow> rows,
             List<CsvValidationError> errors
     ) {
-        int rowNumber =
-                Math.toIntExact(
-                        record.getRecordNumber() + 1
-                );
+        int rowNumber = Math.toIntExact(record.getRecordNumber() + 1);
 
-        int initialErrorCount =
-                errors.size();
+        int initialErrorCount = errors.size();
 
-        String policyNumber =
-                normalizePolicyNumber(
-                        readValue(
-                                record,
-                                headers,
-                                POLICY_NUMBER_HEADER
-                        )
-                );
+        String policyNumber = normalizePolicyNumber(readValue(record, headers, POLICY_NUMBER_HEADER));
 
-        String clientName =
-                normalizeClientName(
-                        readValue(
-                                record,
-                                headers,
-                                CLIENT_NAME_HEADER
-                        )
-                );
+        String clientName = normalizeClientName(readValue(record, headers, CLIENT_NAME_HEADER));
 
-        String maturityAmountValue =
-                readValue(
-                        record,
-                        headers,
-                        MATURITY_AMOUNT_HEADER
-                ).trim();
+        validatePolicyNumber(rowNumber, policyNumber, errors);
 
-        String interestEndDateValue =
-                readValue(
-                        record,
-                        headers,
-                        INTEREST_END_DATE_HEADER
-                ).trim();
+        validateClientName(rowNumber, clientName, errors);
 
-        validatePolicyNumber(
-                rowNumber,
-                policyNumber,
-                errors
-        );
-
-        validateClientName(
-                rowNumber,
-                clientName,
-                errors
-        );
-
-        BigDecimal maturityAmount =
-                parseMaturityAmount(
+        LocalDate maturityDate = parseDate(
                         rowNumber,
-                        maturityAmountValue,
+                        MATURITY_DATE_HEADER,
+                        readValue(record, headers, MATURITY_DATE_HEADER),
+                        "MISSING_MATURITY_DATE",
+                        "INVALID_MATURITY_DATE",
+                        "La date de maturité",
                         errors
                 );
 
-        LocalDate interestEndDate =
-                parseInterestEndDate(
+        BigDecimal maturityAmount = parseMaturityAmount(
                         rowNumber,
-                        interestEndDateValue,
+                        readValue(record, headers, MATURITY_AMOUNT_HEADER),
                         errors
                 );
+
+        LocalDate interestEndDate = parseDate(
+                        rowNumber,
+                        INTEREST_END_DATE_HEADER,
+                        readValue(record, headers, INTEREST_END_DATE_HEADER),
+                        "MISSING_INTEREST_END_DATE",
+                        "INVALID_INTEREST_END_DATE",
+                        "La date de fin des intérêts",
+                        errors
+                );
+
+        if (
+                maturityDate != null
+                        && interestEndDate != null
+                        && maturityDate.isAfter(interestEndDate)
+        ) {
+            errors.add(
+                    new CsvValidationError(
+                            rowNumber,
+                            MATURITY_DATE_HEADER,
+                            "MATURITY_AFTER_INTEREST_END_DATE",
+                            "La date de maturité ne peut pas "
+                                    + "être postérieure à la date "
+                                    + "de fin des intérêts."
+                    )
+            );
+        }
 
         if (errors.size() == initialErrorCount) {
             rows.add(
@@ -349,6 +271,7 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
                             rowNumber,
                             policyNumber,
                             clientName,
+                            maturityDate,
                             maturityAmount,
                             interestEndDate
                     )
@@ -356,39 +279,26 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
     }
 
-    private String readValue(
-            CSVRecord record,
-            Map<String, String> headers,
-            String normalizedHeader
-    ) {
-        String actualHeader =
-                headers.get(normalizedHeader);
+    private String readValue(CSVRecord record, Map<String, String> headers, String normalizedHeader) {
+        String actualHeader = headers.get(normalizedHeader);
 
         if (actualHeader == null) {
             return "";
         }
 
-        String value =
-                record.get(actualHeader);
+        String value = record.get(actualHeader);
 
-        return value == null
-                ? ""
-                : value;
+        return value == null ? "" : value.trim();
     }
 
-    private void validatePolicyNumber(
-            int rowNumber,
-            String policyNumber,
-            List<CsvValidationError> errors
-    ) {
+    private void validatePolicyNumber(int rowNumber, String policyNumber, List<CsvValidationError> errors) {
         if (policyNumber.isBlank()) {
             errors.add(
                     new CsvValidationError(
                             rowNumber,
                             POLICY_NUMBER_HEADER,
                             "MISSING_POLICY_NUMBER",
-                            "Le numéro de police "
-                                    + "est obligatoire."
+                            "Le numéro de police est obligatoire."
                     )
             );
 
@@ -408,11 +318,7 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
     }
 
-    private void validateClientName(
-            int rowNumber,
-            String clientName,
-            List<CsvValidationError> errors
-    ) {
+    private void validateClientName(int rowNumber, String clientName, List<CsvValidationError> errors) {
         if (clientName.isBlank()) {
             errors.add(
                     new CsvValidationError(
@@ -439,11 +345,47 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
     }
 
-    private BigDecimal parseMaturityAmount(
+    private LocalDate parseDate(
             int rowNumber,
+            String column,
             String value,
+            String missingCode,
+            String invalidCode,
+            String label,
             List<CsvValidationError> errors
     ) {
+        if (value.isBlank()) {
+            errors.add(
+                    new CsvValidationError(
+                            rowNumber,
+                            column,
+                            missingCode,
+                            label + " est obligatoire."
+                    )
+            );
+
+            return null;
+        }
+
+        try {
+            return LocalDate.parse( value, DATE_FORMATTER);
+        } catch (DateTimeParseException exception) {
+            errors.add(
+                    new CsvValidationError(
+                            rowNumber,
+                            column,
+                            invalidCode,
+                            label
+                                    + " doit respecter le format "
+                                    + "yyyy-MM-dd."
+                    )
+            );
+
+            return null;
+        }
+    }
+
+    private BigDecimal parseMaturityAmount(int rowNumber, String value, List<CsvValidationError> errors) {
         if (value.isBlank()) {
             errors.add(
                     new CsvValidationError(
@@ -459,8 +401,7 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
 
         try {
-            BigDecimal amount =
-                    new BigDecimal(value);
+            BigDecimal amount = new BigDecimal(value);
 
             if (amount.signum() <= 0) {
                 errors.add(
@@ -520,72 +461,18 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
     }
 
-    private LocalDate parseInterestEndDate(
-            int rowNumber,
-            String value,
-            List<CsvValidationError> errors
-    ) {
-        if (value.isBlank()) {
-            errors.add(
-                    new CsvValidationError(
-                            rowNumber,
-                            INTEREST_END_DATE_HEADER,
-                            "MISSING_INTEREST_END_DATE",
-                            "La date de fin des intérêts "
-                                    + "est obligatoire."
-                    )
-            );
-
-            return null;
-        }
-
-        try {
-            return LocalDate.parse(
-                    value,
-                    DATE_FORMATTER
-            );
-        } catch (DateTimeParseException exception) {
-            errors.add(
-                    new CsvValidationError(
-                            rowNumber,
-                            INTEREST_END_DATE_HEADER,
-                            "INVALID_INTEREST_END_DATE",
-                            "La date de fin des intérêts doit "
-                                    + "respecter le format yyyy-MM-dd."
-                    )
-            );
-
-            return null;
-        }
-    }
-
-    private void validatePolicyClientNames(
-            List<ParsedMaturityRow> rows,
-            List<CsvValidationError> errors
-    ) {
-        Map<String, String> clientByPolicy =
-                new HashMap<>();
+    private void validatePolicyClientNames(List<ParsedMaturityRow> rows, List<CsvValidationError> errors) {
+        Map<String, String> clientByPolicy = new HashMap<>();
 
         for (ParsedMaturityRow row : rows) {
-            String policyKey =
-                    normalizePolicyKey(
-                            row.policyNumber()
-                    );
+            String policyKey = normalizePolicyKey(row.policyNumber());
 
-            String expectedClient =
-                    clientByPolicy.putIfAbsent(
-                            policyKey,
-                            row.clientName()
-                    );
+            String expectedClient = clientByPolicy.putIfAbsent(policyKey, row.clientName());
 
             if (
                     expectedClient != null
                             && !normalizeClientKey(expectedClient)
-                            .equals(
-                                    normalizeClientKey(
-                                            row.clientName()
-                                    )
-                            )
+                            .equals(normalizeClientKey(row.clientName()))
             ) {
                 errors.add(
                         new CsvValidationError(
@@ -594,32 +481,21 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
                                 "INCONSISTENT_CLIENT_NAME",
                                 "Toutes les lignes de la police "
                                         + row.policyNumber()
-                                        + " doivent utiliser le même "
-                                        + "nom de client."
+                                        + " doivent utiliser "
+                                        + "le même nom de client."
                         )
                 );
             }
         }
     }
 
-    private void validatePolicyInterestEndDates(
-            List<ParsedMaturityRow> rows,
-            List<CsvValidationError> errors
-    ) {
-        Map<String, LocalDate> endDateByPolicy =
-                new HashMap<>();
+    private void validatePolicyInterestEndDates(List<ParsedMaturityRow> rows, List<CsvValidationError> errors) {
+        Map<String, LocalDate> endDateByPolicy = new HashMap<>();
 
         for (ParsedMaturityRow row : rows) {
-            String policyKey =
-                    normalizePolicyKey(
-                            row.policyNumber()
-                    );
+            String policyKey = normalizePolicyKey(row.policyNumber());
 
-            LocalDate expectedEndDate =
-                    endDateByPolicy.putIfAbsent(
-                            policyKey,
-                            row.interestEndDate()
-                    );
+            LocalDate expectedEndDate = endDateByPolicy.putIfAbsent(policyKey, row.interestEndDate());
 
             if (
                     expectedEndDate != null
@@ -642,9 +518,7 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
         }
     }
 
-    private String normalizeHeader(
-            String header
-    ) {
+    private String normalizeHeader(String header) {
         if (header == null) {
             return "";
         }
@@ -655,59 +529,36 @@ public class CsvMaturityParserImpl implements CsvMaturityParser {
                 .toLowerCase(Locale.ROOT);
     }
 
-    private String normalizePolicyNumber(
-            String policyNumber
-    ) {
-        return policyNumber == null
-                ? ""
-                : policyNumber.trim();
+    private String normalizePolicyNumber(String policyNumber) {
+        return policyNumber == null ? "" : policyNumber.trim();
     }
 
-    private String normalizePolicyKey(
-            String policyNumber
-    ) {
-        return policyNumber
-                .trim()
-                .toUpperCase(Locale.ROOT);
+    private String normalizePolicyKey(String policyNumber) {
+        return policyNumber.trim().toUpperCase(Locale.ROOT);
     }
 
-    private String normalizeClientName(
-            String clientName
-    ) {
-        return clientName == null
-                ? ""
-                : clientName
-                  .trim()
-                  .replaceAll("\\s+", " ");
+    private String normalizeClientName(String clientName) {
+        if (clientName == null) {
+            return "";
+        }
+
+        return clientName.trim().replaceAll("\\s+", " ");
     }
 
-    private String normalizeClientKey(
-            String clientName
-    ) {
-        return normalizeClientName(clientName)
-                .toUpperCase(Locale.ROOT);
+    private String normalizeClientKey(String clientName) {
+        return normalizeClientName(clientName).toUpperCase(Locale.ROOT);
     }
 
-    private Reader createUtf8Reader(
-            MultipartFile file
-    ) {
+    private Reader createUtf8Reader(MultipartFile file) {
         try {
             PushbackReader reader =
                     new PushbackReader(
-                            new InputStreamReader(
-                                    file.getInputStream(),
-                                    StandardCharsets.UTF_8
-                            ),
-                            1
+                            new InputStreamReader(file.getInputStream(),StandardCharsets.UTF_8),1
                     );
 
-            int firstCharacter =
-                    reader.read();
+            int firstCharacter = reader.read();
 
-            if (
-                    firstCharacter != -1
-                            && firstCharacter != '\uFEFF'
-            ) {
+            if (firstCharacter != -1 && firstCharacter != '\uFEFF') {
                 reader.unread(firstCharacter);
             }
 

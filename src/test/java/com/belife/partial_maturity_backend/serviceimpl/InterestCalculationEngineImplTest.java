@@ -1060,6 +1060,116 @@ class InterestCalculationEngineImplTest {
                 );
     }
 
+    @Test
+    @DisplayName(
+            "Chaque maturité doit utiliser sa propre date fournie dans l'événement"
+    )
+    void shouldUseIndividualDateOfEachMaturity() {
+        InterestSimulationResponse simulation =
+                calculate(
+                        LocalDate.of(2027, 4, 15),
+                        LocalDate.of(2030, 12, 31),
+                        maturity(
+                                1L,
+                                LocalDate.of(2025, 1, 10),
+                                1,
+                                "1000.00"
+                        ),
+                        maturity(
+                                2L,
+                                LocalDate.of(2026, 4, 15),
+                                2,
+                                "500.00"
+                        )
+                );
+
+        assertThat(simulation.completedCycles())
+                .isEqualTo(2);
+        assertThat(simulation.openCapital())
+                .isEqualByComparingTo("1500.000000");
+        assertThat(simulation.openInterest())
+                .isEqualByComparingTo("88.73");
+        assertThat(simulation.balance())
+                .isEqualByComparingTo("1588.73");
+        assertThat(simulation.lines())
+                .extracting(
+                        InterestCalculationLineResponse
+                                ::eventDate
+                )
+                .containsExactly(
+                        LocalDate.of(2025, 1, 10),
+                        LocalDate.of(2026, 1, 10),
+                        LocalDate.of(2026, 4, 15),
+                        LocalDate.of(2027, 4, 15)
+                );
+        assertThat(simulation.lines())
+                .extracting(
+                        InterestCalculationLineResponse
+                                ::eventType
+                )
+                .containsExactly(
+                        CalculationEventType.MATURITY_ADDED,
+                        CalculationEventType.INTEREST_APPLIED,
+                        CalculationEventType.MATURITY_ADDED,
+                        CalculationEventType.INTEREST_APPLIED
+                );
+    }
+
+    @Test
+    @DisplayName(
+            "Les cycles doivent conserver une numérotation globale après un paiement"
+    )
+    void shouldKeepGlobalCycleNumberingAfterPayment() {
+        InterestSimulationResponse simulation =
+                calculate(
+                        LocalDate.of(2027, 1, 1),
+                        LocalDate.of(2030, 1, 1),
+                        maturity(
+                                1L,
+                                LocalDate.of(2024, 1, 1),
+                                1,
+                                "1000.00"
+                        ),
+                        payment(
+                                10L,
+                                LocalDate.of(2025, 1, 1),
+                                "1035.00"
+                        ),
+                        maturity(
+                                2L,
+                                LocalDate.of(2026, 1, 1),
+                                2,
+                                "500.00"
+                        )
+                );
+
+        assertThat(simulation.completedCycles())
+                .isEqualTo(2);
+        assertThat(simulation.lines())
+                .filteredOn(line ->
+                        line.eventType()
+                                == CalculationEventType.INTEREST_APPLIED
+                )
+                .extracting(
+                        InterestCalculationLineResponse
+                                ::cycleNumber
+                )
+                .containsExactly(1L, 2L);
+        assertThat(simulation.lines())
+                .filteredOn(line ->
+                        line.eventType()
+                                == CalculationEventType.INTEREST_APPLIED
+                )
+                .extracting(
+                        InterestCalculationLineResponse
+                                ::description
+                )
+                .containsExactly(
+                        "Application du cycle annuel complet numéro 1.",
+                        "Application du cycle annuel complet numéro 2."
+                );
+    }
+
     private InterestSimulationResponse calculate(
             LocalDate calculationDate,
             LocalDate interestEndDate,

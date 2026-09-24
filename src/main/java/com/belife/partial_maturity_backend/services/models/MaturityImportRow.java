@@ -4,8 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Maturité enrichie par le service d'import
- * et prête à être persistée.
+ * Maturité enrichie avec son rang et son type.
  */
 public record MaturityImportRow(
         int rowNumber,
@@ -20,8 +19,7 @@ public record MaturityImportRow(
 
     public static MaturityImportRow from(
             ParsedMaturityRow source,
-            int maturityRank,
-            LocalDate maturityDate
+            int maturityRank
     ) {
         if (source == null) {
             throw new IllegalArgumentException(
@@ -35,19 +33,13 @@ public record MaturityImportRow(
             );
         }
 
-        if (maturityDate == null) {
-            throw new IllegalArgumentException(
-                    "La date de maturité est obligatoire."
-            );
-        }
-
         return new MaturityImportRow(
                 source.rowNumber(),
                 source.policyNumber(),
                 source.clientName(),
                 "MATURITE_" + maturityRank,
                 maturityRank,
-                maturityDate,
+                source.maturityDate(),
                 source.maturityAmount(),
                 source.interestEndDate()
         );

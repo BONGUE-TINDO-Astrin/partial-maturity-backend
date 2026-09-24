@@ -457,11 +457,6 @@ public class ImportBatchReversalServiceImpl implements ImportBatchReversalServic
                     remainingMaturities
             );
 
-            validateRemainingDates(
-                    entry.getKey(),
-                    remainingMaturities
-            );
-
             validateRemainingInterestEndDate(
                     entry.getKey(),
                     remainingMaturities
@@ -499,39 +494,7 @@ public class ImportBatchReversalServiceImpl implements ImportBatchReversalServic
         }
     }
 
-    private void validateRemainingDates(
-            String policyNumber,
-            List<PolicyMaturityEntity> maturities
-    ) {
-        for (
-                int index = 1;
-                index < maturities.size();
-                index++
-        ) {
-            PolicyMaturityEntity previous =
-                    maturities.get(index - 1);
-
-            PolicyMaturityEntity current =
-                    maturities.get(index);
-
-            if (
-                    !current.getMaturityDate()
-                            .isAfter(
-                                    previous
-                                            .getMaturityDate()
-                            )
-            ) {
-                throw new ImportBatchReversalNotAllowedException(
-                        "Le chargement ne peut pas être annulé, "
-                                + "car les dates restantes de la police "
-                                + policyNumber
-                                + " ne seraient plus strictement "
-                                + "croissantes."
-                );
-            }
-        }
-    }
-
+    
     private void validateRemainingInterestEndDate(
             String policyNumber,
             List<PolicyMaturityEntity> maturities

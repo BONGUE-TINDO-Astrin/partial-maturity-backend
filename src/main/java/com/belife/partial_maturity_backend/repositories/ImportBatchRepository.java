@@ -26,26 +26,6 @@ public interface ImportBatchRepository extends JpaRepository<ImportBatchEntity, 
      */
     Page<ImportBatchEntity> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
-//    /**
-//     * Compte les chargements possédant un statut donné.
-//     */
-//    long countByStatus(ImportBatchStatus status);
-
-//    /**
-//     * Calcule le nombre total de lignes réellement insérées.
-//     */
-//    @Query("""
-//        select coalesce(sum(batch.insertedRows), 0)
-//        from ImportBatchEntity batch
-//        where batch.status = :status
-//        """)
-//    long sumInsertedRowsByStatus(@Param("status") ImportBatchStatus status);
-//
-//    /**
-//     * Retourne le dernier chargement créé.
-//     */
-//    Optional<ImportBatchEntity> findFirstByOrderByCreatedAtDescIdDesc();
-
     /**
      * Verrouille un chargement pendant sa réversion.
      *

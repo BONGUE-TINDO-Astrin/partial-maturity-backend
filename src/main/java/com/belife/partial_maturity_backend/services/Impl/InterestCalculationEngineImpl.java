@@ -270,6 +270,9 @@ public class InterestCalculationEngineImpl
 
             state.completedCycles++;
 
+            long globalCycleNumber =
+                    state.completedCycles;
+
             LocalDate cycleDate =
                     state.referenceDate
                             .plusYears(cycle);
@@ -278,12 +281,11 @@ public class InterestCalculationEngineImpl
                     new InterestCalculationLineResponse(
                             state.nextSequence(),
                             cycleDate,
-                            CalculationEventType
-                                    .INTEREST_APPLIED,
+                            CalculationEventType.INTEREST_APPLIED,
                             "Application du cycle annuel complet numéro "
-                                    + cycle
+                                    + globalCycleNumber
                                     + ".",
-                            cycle,
+                            globalCycleNumber,
                             balanceBefore,
                             ZERO,
                             annualRate,
@@ -292,6 +294,31 @@ public class InterestCalculationEngineImpl
                             state.balance
                     )
             );
+
+//            state.completedCycles++;
+//
+//            LocalDate cycleDate =
+//                    state.referenceDate
+//                            .plusYears(cycle);
+//
+//            state.lines.add(
+//                    new InterestCalculationLineResponse(
+//                            state.nextSequence(),
+//                            cycleDate,
+//                            CalculationEventType
+//                                    .INTEREST_APPLIED,
+//                            "Application du cycle annuel complet numéro "
+//                                    + cycle
+//                                    + ".",
+//                            cycle,
+//                            balanceBefore,
+//                            ZERO,
+//                            annualRate,
+//                            interest,
+//                            ZERO,
+//                            state.balance
+//                    )
+//            );
         }
 
         /*

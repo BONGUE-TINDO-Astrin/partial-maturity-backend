@@ -22,22 +22,6 @@ import java.time.Instant;
 /**
  * Représente un événement métier sensible enregistré
  * dans le journal d'audit.
- *
- * <p>Une entrée est fonctionnellement immuable. Après son
- * insertion, elle ne doit jamais être modifiée ou supprimée
- * par l'application.</p>
- *
- * <p>Les données suivantes sont interdites dans le résumé
- * et dans le document JSON :</p>
- *
- * <ul>
- *     <li>mot de passe en clair ;</li>
- *     <li>hash de mot de passe ;</li>
- *     <li>JWT ou token d'accès ;</li>
- *     <li>header Authorization ;</li>
- *     <li>secret de configuration ;</li>
- *     <li>mot de passe de base de données.</li>
- * </ul>
  */
 @Getter
 @Setter
@@ -48,22 +32,10 @@ import java.time.Instant;
     name = "audit_log",
     schema = "partial_maturity",
     indexes = {
-        @Index(
-            name = "ix_audit_log_occurred_at",
-            columnList = "occurred_at DESC, id DESC"
-        ),
-        @Index(
-            name = "ix_audit_log_event_type",
-            columnList = "event_type, occurred_at DESC, id DESC"
-        ),
-        @Index(
-            name = "ix_audit_log_actor",
-            columnList = "actor_username, occurred_at DESC, id DESC"
-        ),
-        @Index(
-            name = "ix_audit_log_resource",
-            columnList = "resource_type, resource_id, occurred_at DESC, id DESC"
-        )
+        @Index(name = "ix_audit_log_occurred_at", columnList = "occurred_at DESC, id DESC"),
+        @Index(name = "ix_audit_log_event_type", columnList = "event_type, occurred_at DESC, id DESC"),
+        @Index(name = "ix_audit_log_actor", columnList = "actor_username, occurred_at DESC, id DESC"),
+        @Index(name = "ix_audit_log_resource", columnList = "resource_type, resource_id, occurred_at DESC, id DESC")
     }
 )
 public class AuditLogEntity {

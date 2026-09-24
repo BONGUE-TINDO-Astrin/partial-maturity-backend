@@ -84,9 +84,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         return toCurrentUserResponse(user);
     }
 
-    private CurrentUserResponse toCurrentUserResponse(
-        AppUserEntity user
-    ) {
+    private CurrentUserResponse toCurrentUserResponse(AppUserEntity user) {
         return new CurrentUserResponse(
             user.getId(),
             user.getUsername(),

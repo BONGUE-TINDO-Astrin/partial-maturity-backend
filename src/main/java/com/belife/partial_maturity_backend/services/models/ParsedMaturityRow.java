@@ -18,6 +18,7 @@ public record ParsedMaturityRow(
         int rowNumber,
         String policyNumber,
         String clientName,
+        LocalDate maturityDate,
         BigDecimal maturityAmount,
         LocalDate interestEndDate
 ) {

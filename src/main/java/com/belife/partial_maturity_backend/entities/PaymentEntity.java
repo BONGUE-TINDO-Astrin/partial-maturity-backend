@@ -30,14 +30,8 @@ import java.util.List;
     name = "payment",
     schema = "partial_maturity",
     indexes = {
-        @Index(
-            name = "ix_payment_policy_date",
-            columnList = "policy_number, payment_date, id"
-        ),
-        @Index(
-            name = "ix_payment_policy_status",
-            columnList ="policy_number, status_code"
-        )
+        @Index(name = "ix_payment_policy_date", columnList = "policy_number, payment_date, id"),
+        @Index(name = "ix_payment_policy_status", columnList ="policy_number, status_code")
     }
 )
 public class PaymentEntity extends AuditableEntity {

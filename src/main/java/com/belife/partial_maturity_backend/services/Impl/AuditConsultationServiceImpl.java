@@ -63,8 +63,7 @@ public class AuditConsultationServiceImpl implements AuditConsultationService {
 
         Pageable pageable = PageRequest.of(safePage, safeSize, sort);
 
-        Specification<AuditLogEntity> specification =
-            Specification
+        Specification<AuditLogEntity> specification = Specification
                 .where(AuditLogSpecifications.hasEventType(eventType))
                 .and(AuditLogSpecifications.hasResourceType(resourceType))
                 .and(AuditLogSpecifications.hasActor(actor))
@@ -74,8 +73,7 @@ public class AuditConsultationServiceImpl implements AuditConsultationService {
 
         Page<AuditLogEntity> auditPage = auditLogRepository.findAll(specification, pageable);
 
-        List<AuditLogSummaryResponse> content =
-            auditPage.getContent()
+        List<AuditLogSummaryResponse> content = auditPage.getContent()
                 .stream()
                 .map(this::toSummaryResponse)
                 .toList();

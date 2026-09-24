@@ -138,8 +138,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(CsvFileProcessingException.class)
-    public ResponseEntity<Map<String, Object>>
-    handleCsvFileProcessingException(
+    public ResponseEntity<Map<String, Object>> handleCsvFileProcessingException(
             CsvFileProcessingException exception
     ) {
         return buildResponse(
@@ -151,8 +150,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ImportBatchNotFoundException.class)
-    public ResponseEntity<Map<String, Object>>
-    handleImportBatchNotFound(
+    public ResponseEntity<Map<String, Object>> handleImportBatchNotFound(
             ImportBatchNotFoundException exception
     ) {
         return buildResponse(
@@ -168,8 +166,7 @@ public class GlobalExceptionHandler {
      * dans les données de maturités importées.
      */
     @ExceptionHandler(PolicyNotFoundException.class)
-    public ResponseEntity<Map<String, Object>>
-    handlePolicyNotFound(
+    public ResponseEntity<Map<String, Object>> handlePolicyNotFound(
             PolicyNotFoundException exception
     ) {
         return buildResponse(
@@ -185,8 +182,7 @@ public class GlobalExceptionHandler {
      * fourni est invalide.
      */
     @ExceptionHandler(InvalidPolicyNumberException.class)
-    public ResponseEntity<Map<String, Object>>
-    handleInvalidPolicyNumber(
+    public ResponseEntity<Map<String, Object>> handleInvalidPolicyNumber(
             InvalidPolicyNumberException exception
     ) {
         return buildResponse(
@@ -198,8 +194,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(PaymentNotFoundException.class)
-    public ResponseEntity<Map<String, Object>>
-    handlePaymentNotFound(
+    public ResponseEntity<Map<String, Object>> handlePaymentNotFound(
             PaymentNotFoundException exception
     ) {
         return buildResponse(
@@ -211,8 +206,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(PaymentNotAllowedException.class)
-    public ResponseEntity<Map<String, Object>>
-    handlePaymentNotAllowed(
+    public ResponseEntity<Map<String, Object>> handlePaymentNotAllowed(
             PaymentNotAllowedException exception
     ) {
         return buildResponse(
@@ -228,8 +222,7 @@ public class GlobalExceptionHandler {
             ObjectOptimisticLockingFailureException.class,
             PessimisticLockingFailureException.class
     })
-    public ResponseEntity<Map<String, Object>>
-    handleConcurrentPaymentOperation(
+    public ResponseEntity<Map<String, Object>> handleConcurrentPaymentOperation(
             RuntimeException exception
     ) {
         return buildResponse(
@@ -245,8 +238,7 @@ public class GlobalExceptionHandler {
      * n'existe pas.
      */
     @ExceptionHandler(AuditLogNotFoundException.class)
-    public ResponseEntity<Map<String, Object>>
-    handleAuditLogNotFound(
+    public ResponseEntity<Map<String, Object>> handleAuditLogNotFound(
             AuditLogNotFoundException exception
     ) {
         return buildResponse(
@@ -258,8 +250,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(InvalidAuditFilterException.class)
-    public ResponseEntity<Map<String, Object>>
-    handleInvalidAuditFilter(
+    public ResponseEntity<Map<String, Object>> handleInvalidAuditFilter(
             InvalidAuditFilterException exception
     ) {
         return buildResponse(
@@ -275,11 +266,8 @@ public class GlobalExceptionHandler {
      * mais que son état ou ses dépendances empêchent
      * sa réversion.
      */
-    @ExceptionHandler(
-            ImportBatchReversalNotAllowedException.class
-    )
-    public ResponseEntity<Map<String, Object>>
-    handleImportBatchReversalNotAllowed(
+    @ExceptionHandler(ImportBatchReversalNotAllowedException.class)
+    public ResponseEntity<Map<String, Object>> handleImportBatchReversalNotAllowed(
             ImportBatchReversalNotAllowedException exception
     ) {
         return buildResponse(
@@ -294,11 +282,8 @@ public class GlobalExceptionHandler {
      * Retourne HTTP 409 lorsqu'une autre opération
      * modifie simultanément le lot ou une police concernée.
      */
-    @ExceptionHandler(
-            ConcurrentImportBatchOperationException.class
-    )
-    public ResponseEntity<Map<String, Object>>
-    handleConcurrentImportBatchOperation(
+    @ExceptionHandler(ConcurrentImportBatchOperationException.class)
+    public ResponseEntity<Map<String, Object>> handleConcurrentImportBatchOperation(
             ConcurrentImportBatchOperationException exception
     ) {
         return buildResponse(

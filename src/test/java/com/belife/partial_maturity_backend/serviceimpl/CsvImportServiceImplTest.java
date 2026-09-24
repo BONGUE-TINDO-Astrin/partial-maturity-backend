@@ -8,7 +8,6 @@ import com.belife.partial_maturity_backend.enums.ImportBatchStatus;
 import com.belife.partial_maturity_backend.enums.PaymentStatus;
 import com.belife.partial_maturity_backend.repositories.PaymentRepository;
 import com.belife.partial_maturity_backend.repositories.PolicyMaturityRepository;
-import com.belife.partial_maturity_backend.services.BusinessDateProvider;
 import com.belife.partial_maturity_backend.services.CsvImportPersistenceService;
 import com.belife.partial_maturity_backend.services.CsvMaturityParser;
 import com.belife.partial_maturity_backend.services.Impl.CsvImportServiceImpl;
@@ -32,7 +31,13 @@ import java.util.List;
 
 import static com.belife.partial_maturity_backend.testutils.CsvTestFileFactory.csv;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,12 +50,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class CsvImportServiceImplTest {
 
-    private static final LocalDate BUSINESS_DATE =
-            LocalDate.of(
-                    2026,
-                    9,
-                    18
-            );
+    private static final String DEFAULT_MATURITY_DATE =
+            "2026-09-18";
 
     private static final String DEFAULT_END_DATE =
             "2030-03-15";
@@ -69,10 +70,6 @@ class CsvImportServiceImplTest {
     private CsvImportPersistenceService
             persistenceService;
 
-    @Mock
-    private BusinessDateProvider
-            businessDateProvider;
-
     private CsvImportServiceImpl csvImportService;
 
     @BeforeEach
@@ -82,16 +79,8 @@ class CsvImportServiceImplTest {
                         csvMaturityParser,
                         policyMaturityRepository,
                         paymentRepository,
-                        persistenceService,
-                        businessDateProvider
+                        persistenceService
                 );
-
-        lenient()
-                .when(
-                        businessDateProvider
-                                .currentDate()
-                )
-                .thenReturn(BUSINESS_DATE);
 
         lenient()
                 .when(
@@ -117,6 +106,7 @@ class CsvImportServiceImplTest {
                         2,
                         "POL001",
                         "Client Exemple",
+                        DEFAULT_MATURITY_DATE,
                         "2500000.00",
                         DEFAULT_END_DATE
                 );
@@ -136,17 +126,10 @@ class CsvImportServiceImplTest {
         CsvImportResponse expectedResponse =
                 importedResponse(1);
 
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(1),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(expectedResponse);
+        configureImportedResponse(
+                1,
+                expectedResponse
+        );
 
         CsvImportResponse response =
                 csvImportService.importFile(
@@ -157,51 +140,61 @@ class CsvImportServiceImplTest {
         assertThat(response)
                 .isSameAs(expectedResponse);
 
-        List<MaturityImportRow> persistedRows =
-                captureImportedRows();
-
-        assertThat(persistedRows)
+        assertThat(captureImportedRows())
                 .singleElement()
-                .satisfies(row -> {
-                    assertThat(row.rowNumber())
+                .satisfies(importedRow -> {
+                    assertThat(importedRow.rowNumber())
                             .isEqualTo(2);
 
-                    assertThat(row.policyNumber())
+                    assertThat(importedRow.policyNumber())
                             .isEqualTo("POL001");
 
-                    assertThat(row.clientName())
+                    assertThat(importedRow.clientName())
                             .isEqualTo("Client Exemple");
 
-                    assertThat(row.maturityRank())
+                    assertThat(importedRow.maturityRank())
                             .isEqualTo(1);
 
-                    assertThat(row.maturityType())
+                    assertThat(importedRow.maturityType())
                             .isEqualTo("MATURITE_1");
 
-                    assertThat(row.maturityDate())
-                            .isEqualTo(BUSINESS_DATE);
+                    assertThat(importedRow.maturityDate())
+                            .isEqualTo(
+                                    LocalDate.parse(
+                                            DEFAULT_MATURITY_DATE
+                                    )
+                            );
 
-                    assertThat(row.maturityAmount())
+                    assertThat(importedRow.maturityAmount())
                             .isEqualByComparingTo(
                                     "2500000.00"
+                            );
+
+                    assertThat(importedRow.interestEndDate())
+                            .isEqualTo(
+                                    LocalDate.parse(
+                                            DEFAULT_END_DATE
+                                    )
                             );
                 });
     }
 
     @Test
     @DisplayName(
-            "Toutes les lignes du chargement doivent utiliser la date métier"
+            "Chaque maturité doit conserver la date fournie dans le fichier"
     )
-    void shouldUseBusinessDateForEveryRow() {
+    void shouldPreserveMaturityDateFromEachCsvRow() {
         MockMultipartFile file =
                 createUploadedFile();
 
-        List<ParsedMaturityRow> sourceRows =
+        configureParsedRows(
+                file,
                 List.of(
                         row(
                                 2,
                                 "POL001",
                                 "Client A",
+                                "2025-01-10",
                                 "1000000.00",
                                 DEFAULT_END_DATE
                         ),
@@ -209,14 +202,19 @@ class CsvImportServiceImplTest {
                                 3,
                                 "POL002",
                                 "Client B",
+                                "2026-06-15",
                                 "2000000.00",
                                 "2032-03-15"
+                        ),
+                        row(
+                                4,
+                                "POL001",
+                                "Client A",
+                                "2027-02-20",
+                                "500000.00",
+                                DEFAULT_END_DATE
                         )
-                );
-
-        configureParsedRows(
-                file,
-                sourceRows
+                )
         );
 
         when(
@@ -226,18 +224,9 @@ class CsvImportServiceImplTest {
                         )
         ).thenReturn(List.of());
 
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(2),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(
-                importedResponse(2)
+        configureImportedResponse(
+                3,
+                importedResponse(3)
         );
 
         csvImportService.importFile(
@@ -245,14 +234,18 @@ class CsvImportServiceImplTest {
                 "admin"
         );
 
-        List<MaturityImportRow> persistedRows =
+        List<MaturityImportRow> importedRows =
                 captureImportedRows();
 
-        assertThat(persistedRows)
+        assertThat(importedRows)
                 .extracting(
                         MaturityImportRow::maturityDate
                 )
-                .containsOnly(BUSINESS_DATE);
+                .containsExactly(
+                        LocalDate.of(2025, 1, 10),
+                        LocalDate.of(2026, 6, 15),
+                        LocalDate.of(2027, 2, 20)
+                );
     }
 
     @Test
@@ -263,18 +256,18 @@ class CsvImportServiceImplTest {
         MockMultipartFile file =
                 createUploadedFile();
 
-        ParsedMaturityRow source =
-                row(
-                        2,
-                        "POL001",
-                        "Client Exemple",
-                        "500000.00",
-                        DEFAULT_END_DATE
-                );
-
         configureParsedRows(
                 file,
-                List.of(source)
+                List.of(
+                        row(
+                                2,
+                                "POL001",
+                                "Client Exemple",
+                                "2026-09-18",
+                                "500000.00",
+                                DEFAULT_END_DATE
+                        )
+                )
         );
 
         when(
@@ -301,17 +294,8 @@ class CsvImportServiceImplTest {
                 )
         );
 
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(1),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(
+        configureImportedResponse(
+                1,
                 importedResponse(1)
         );
 
@@ -322,29 +306,40 @@ class CsvImportServiceImplTest {
 
         assertThat(captureImportedRows())
                 .singleElement()
-                .satisfies(row -> {
-                    assertThat(row.maturityRank())
+                .satisfies(importedRow -> {
+                    assertThat(importedRow.maturityRank())
                             .isEqualTo(8);
 
-                    assertThat(row.maturityType())
+                    assertThat(importedRow.maturityType())
                             .isEqualTo("MATURITE_8");
+
+                    assertThat(importedRow.maturityDate())
+                            .isEqualTo(
+                                    LocalDate.of(
+                                            2026,
+                                            9,
+                                            18
+                                    )
+                            );
                 });
     }
 
     @Test
     @DisplayName(
-            "Plusieurs lignes d'une police doivent recevoir des rangs successifs"
+            "Plusieurs lignes doivent recevoir des rangs selon l'ordre du fichier"
     )
     void shouldAssignRanksInFileOrder() {
         MockMultipartFile file =
                 createUploadedFile();
 
-        List<ParsedMaturityRow> sourceRows =
+        configureParsedRows(
+                file,
                 List.of(
                         row(
                                 2,
                                 "POL001",
                                 "Client Exemple",
+                                "2026-01-10",
                                 "1000000.00",
                                 DEFAULT_END_DATE
                         ),
@@ -352,6 +347,7 @@ class CsvImportServiceImplTest {
                                 3,
                                 "POL002",
                                 "Autre Client",
+                                "2026-02-15",
                                 "2000000.00",
                                 "2032-03-15"
                         ),
@@ -359,6 +355,7 @@ class CsvImportServiceImplTest {
                                 4,
                                 "POL001",
                                 "Client Exemple",
+                                "2026-06-20",
                                 "3000000.00",
                                 DEFAULT_END_DATE
                         ),
@@ -366,14 +363,11 @@ class CsvImportServiceImplTest {
                                 5,
                                 "POL001",
                                 "Client Exemple",
+                                "2027-01-05",
                                 "4000000.00",
                                 DEFAULT_END_DATE
                         )
-                );
-
-        configureParsedRows(
-                file,
-                sourceRows
+                )
         );
 
         when(
@@ -393,17 +387,8 @@ class CsvImportServiceImplTest {
                 )
         );
 
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(4),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(
+        configureImportedResponse(
+                4,
                 importedResponse(4)
         );
 
@@ -412,10 +397,10 @@ class CsvImportServiceImplTest {
                 "admin"
         );
 
-        List<MaturityImportRow> persistedRows =
+        List<MaturityImportRow> importedRows =
                 captureImportedRows();
 
-        assertThat(persistedRows)
+        assertThat(importedRows)
                 .extracting(
                         MaturityImportRow::policyNumber
                 )
@@ -426,7 +411,7 @@ class CsvImportServiceImplTest {
                         "POL001"
                 );
 
-        assertThat(persistedRows)
+        assertThat(importedRows)
                 .extracting(
                         MaturityImportRow::maturityRank
                 )
@@ -437,7 +422,7 @@ class CsvImportServiceImplTest {
                         5
                 );
 
-        assertThat(persistedRows)
+        assertThat(importedRows)
                 .extracting(
                         MaturityImportRow::maturityType
                 )
@@ -446,6 +431,17 @@ class CsvImportServiceImplTest {
                         "MATURITE_1",
                         "MATURITE_4",
                         "MATURITE_5"
+                );
+
+        assertThat(importedRows)
+                .extracting(
+                        MaturityImportRow::maturityDate
+                )
+                .containsExactly(
+                        LocalDate.of(2026, 1, 10),
+                        LocalDate.of(2026, 2, 15),
+                        LocalDate.of(2026, 6, 20),
+                        LocalDate.of(2027, 1, 5)
                 );
     }
 
@@ -462,6 +458,7 @@ class CsvImportServiceImplTest {
                         2,
                         "POL001",
                         "Client Exemple",
+                        "2026-09-18",
                         "2500000.00",
                         DEFAULT_END_DATE
                 );
@@ -471,6 +468,7 @@ class CsvImportServiceImplTest {
                         3,
                         "POL001",
                         "Client Exemple",
+                        "2026-09-18",
                         "2500000.00",
                         DEFAULT_END_DATE
                 );
@@ -490,17 +488,8 @@ class CsvImportServiceImplTest {
                         )
         ).thenReturn(List.of());
 
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(2),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(
+        configureImportedResponse(
+                2,
                 importedResponse(2)
         );
 
@@ -509,19 +498,31 @@ class CsvImportServiceImplTest {
                 "admin"
         );
 
-        List<MaturityImportRow> persistedRows =
+        List<MaturityImportRow> importedRows =
                 captureImportedRows();
 
-        assertThat(persistedRows)
+        assertThat(importedRows)
                 .hasSize(2);
 
-        assertThat(persistedRows)
+        assertThat(importedRows)
                 .extracting(
                         MaturityImportRow::maturityRank
                 )
                 .containsExactly(1, 2);
 
-        assertThat(persistedRows)
+        assertThat(importedRows)
+                .extracting(
+                        MaturityImportRow::maturityDate
+                )
+                .containsOnly(
+                        LocalDate.of(
+                                2026,
+                                9,
+                                18
+                        )
+                );
+
+        assertThat(importedRows)
                 .extracting(
                         MaturityImportRow::maturityAmount
                 )
@@ -548,6 +549,7 @@ class CsvImportServiceImplTest {
                                 2,
                                 "POL001",
                                 "Client Exemple",
+                                "2026-09-18",
                                 "500000.00",
                                 DEFAULT_END_DATE
                         )
@@ -571,17 +573,8 @@ class CsvImportServiceImplTest {
                 )
         );
 
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(1),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(
+        configureImportedResponse(
+                1,
                 importedResponse(1)
         );
 
@@ -592,11 +585,11 @@ class CsvImportServiceImplTest {
 
         assertThat(captureImportedRows())
                 .singleElement()
-                .satisfies(row -> {
-                    assertThat(row.maturityRank())
+                .satisfies(importedRow -> {
+                    assertThat(importedRow.maturityRank())
                             .isEqualTo(26);
 
-                    assertThat(row.maturityType())
+                    assertThat(importedRow.maturityType())
                             .isEqualTo(
                                     "MATURITE_26"
                             );
@@ -615,9 +608,9 @@ class CsvImportServiceImplTest {
                 List.of(
                         new CsvValidationError(
                                 2,
-                                "nom_client",
-                                "MISSING_CLIENT_NAME",
-                                "Le nom du client est obligatoire."
+                                "date_maturite",
+                                "MISSING_MATURITY_DATE",
+                                "La date de maturité est obligatoire."
                         )
                 );
 
@@ -661,6 +654,10 @@ class CsvImportServiceImplTest {
                 policyMaturityRepository
         );
 
+        verifyNoInteractions(
+                paymentRepository
+        );
+
         verify(
                 persistenceService,
                 never()
@@ -668,7 +665,7 @@ class CsvImportServiceImplTest {
                 anyString(),
                 anyString(),
                 anyLong(),
-                eq(1),
+                anyInt(),
                 anyList(),
                 anyString()
         );
@@ -689,6 +686,7 @@ class CsvImportServiceImplTest {
                                 2,
                                 "POL001",
                                 "Nouveau Client",
+                                "2026-09-18",
                                 "500000.00",
                                 DEFAULT_END_DATE
                         )
@@ -735,6 +733,18 @@ class CsvImportServiceImplTest {
                                     "INCONSISTENT_CLIENT_NAME"
                             );
                 });
+
+        verify(
+                persistenceService,
+                never()
+        ).saveImportedBatch(
+                anyString(),
+                anyString(),
+                anyLong(),
+                anyInt(),
+                anyList(),
+                anyString()
+        );
     }
 
     @Test
@@ -752,6 +762,7 @@ class CsvImportServiceImplTest {
                                 2,
                                 "POL001",
                                 "Client Exemple",
+                                "2026-09-18",
                                 "500000.00",
                                 DEFAULT_END_DATE
                         )
@@ -775,17 +786,8 @@ class CsvImportServiceImplTest {
                 )
         );
 
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(1),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(
+        configureImportedResponse(
+                1,
                 importedResponse(1)
         );
 
@@ -799,6 +801,13 @@ class CsvImportServiceImplTest {
                 .isEqualTo(
                         ImportBatchStatus.IMPORTED
                 );
+
+        assertThat(captureImportedRows())
+                .singleElement()
+                .extracting(
+                        MaturityImportRow::clientName
+                )
+                .isEqualTo("Client Exemple");
     }
 
     @Test
@@ -816,6 +825,7 @@ class CsvImportServiceImplTest {
                                 2,
                                 "POL001",
                                 "Client Exemple",
+                                "2026-09-18",
                                 "500000.00",
                                 "2031-03-15"
                         )
@@ -863,9 +873,9 @@ class CsvImportServiceImplTest {
 
     @Test
     @DisplayName(
-            "Une date de fin antérieure au chargement doit rejeter le fichier"
+            "Une maturité postérieure au dernier paiement doit être acceptée"
     )
-    void shouldRejectInterestEndDateBeforeBusinessDate() {
+    void shouldAllowMaturityAfterLastPaidPayment() {
         MockMultipartFile file =
                 createUploadedFile();
 
@@ -876,8 +886,9 @@ class CsvImportServiceImplTest {
                                 2,
                                 "POL001",
                                 "Client Exemple",
+                                "2026-09-18",
                                 "500000.00",
-                                "2026-09-17"
+                                DEFAULT_END_DATE
                         )
                 )
         );
@@ -887,7 +898,118 @@ class CsvImportServiceImplTest {
                         .findAllByPolicyNumberIn(
                                 anyCollection()
                         )
-        ).thenReturn(List.of());
+        ).thenReturn(
+                List.of(
+                        maturity(
+                                "POL001",
+                                "Client Exemple",
+                                1,
+                                "2025-01-01",
+                                DEFAULT_END_DATE
+                        )
+                )
+        );
+
+        when(
+                paymentRepository
+                        .findAllByPolicyNumbersAndStatus(
+                                anyCollection(),
+                                eq(PaymentStatus.PAID)
+                        )
+        ).thenReturn(
+                List.of(
+                        paidPayment(
+                                10L,
+                                "POL001",
+                                "2026-09-17"
+                        )
+                )
+        );
+
+        configureImportedResponse(
+                1,
+                importedResponse(1)
+        );
+
+        CsvImportResponse response =
+                csvImportService.importFile(
+                        file,
+                        "admin"
+                );
+
+        assertThat(response.status())
+                .isEqualTo(
+                        ImportBatchStatus.IMPORTED
+                );
+
+        assertThat(captureImportedRows())
+                .singleElement()
+                .extracting(
+                        MaturityImportRow::maturityDate
+                )
+                .isEqualTo(
+                        LocalDate.of(
+                                2026,
+                                9,
+                                18
+                        )
+                );
+    }
+
+    @Test
+    @DisplayName(
+            "Une maturité le jour du dernier paiement doit être rejetée"
+    )
+    void shouldRejectMaturityOnLastPaidPaymentDate() {
+        MockMultipartFile file =
+                createUploadedFile();
+
+        configureParsedRows(
+                file,
+                List.of(
+                        row(
+                                2,
+                                "POL001",
+                                "Client Exemple",
+                                "2026-09-18",
+                                "500000.00",
+                                DEFAULT_END_DATE
+                        )
+                )
+        );
+
+        when(
+                policyMaturityRepository
+                        .findAllByPolicyNumberIn(
+                                anyCollection()
+                        )
+        ).thenReturn(
+                List.of(
+                        maturity(
+                                "POL001",
+                                "Client Exemple",
+                                1,
+                                "2025-01-01",
+                                DEFAULT_END_DATE
+                        )
+                )
+        );
+
+        when(
+                paymentRepository
+                        .findAllByPolicyNumbersAndStatus(
+                                anyCollection(),
+                                eq(PaymentStatus.PAID)
+                        )
+        ).thenReturn(
+                List.of(
+                        paidPayment(
+                                10L,
+                                "POL001",
+                                "2026-09-18"
+                        )
+                )
+        );
 
         configureRejectedResponse(1);
 
@@ -897,25 +1019,42 @@ class CsvImportServiceImplTest {
                         "admin"
                 );
 
+        assertThat(response.status())
+                .isEqualTo(
+                        ImportBatchStatus.REJECTED
+                );
+
         assertThat(response.errors())
                 .anySatisfy(error -> {
                     assertThat(error.column())
                             .isEqualTo(
-                                    "date_fin_interets"
+                                    "date_maturite"
                             );
 
                     assertThat(error.code())
                             .isEqualTo(
-                                    "MATURITY_AFTER_INTEREST_END_DATE"
+                                    "MATURITY_NOT_AFTER_LAST_PAYMENT"
                             );
                 });
+
+        verify(
+                persistenceService,
+                never()
+        ).saveImportedBatch(
+                anyString(),
+                anyString(),
+                anyLong(),
+                anyInt(),
+                anyList(),
+                anyString()
+        );
     }
 
     @Test
     @DisplayName(
-            "Une date de fin égale au jour du chargement doit être acceptée"
+            "Une maturité antérieure au dernier paiement doit être rejetée"
     )
-    void shouldAllowInterestEndDateOnBusinessDate() {
+    void shouldRejectMaturityBeforeLastPaidPayment() {
         MockMultipartFile file =
                 createUploadedFile();
 
@@ -926,60 +1065,7 @@ class CsvImportServiceImplTest {
                                 2,
                                 "POL001",
                                 "Client Exemple",
-                                "500000.00",
-                                BUSINESS_DATE.toString()
-                        )
-                )
-        );
-
-        when(
-                policyMaturityRepository
-                        .findAllByPolicyNumberIn(
-                                anyCollection()
-                        )
-        ).thenReturn(List.of());
-
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(1),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(
-                importedResponse(1)
-        );
-
-        CsvImportResponse response =
-                csvImportService.importFile(
-                        file,
-                        "admin"
-                );
-
-        assertThat(response.status())
-                .isEqualTo(
-                        ImportBatchStatus.IMPORTED
-                );
-    }
-
-    @Test
-    @DisplayName(
-            "Un chargement postérieur au dernier paiement doit être accepté"
-    )
-    void shouldAllowImportAfterLastPaidPayment() {
-        MockMultipartFile file =
-                createUploadedFile();
-
-        configureParsedRows(
-                file,
-                List.of(
-                        row(
-                                2,
-                                "POL001",
-                                "Client Exemple",
+                                "2026-09-17",
                                 "500000.00",
                                 DEFAULT_END_DATE
                         )
@@ -1014,87 +1100,7 @@ class CsvImportServiceImplTest {
                         paidPayment(
                                 10L,
                                 "POL001",
-                                "2026-09-17"
-                        )
-                )
-        );
-
-        when(
-                persistenceService
-                        .saveImportedBatch(
-                                anyString(),
-                                anyString(),
-                                anyLong(),
-                                eq(1),
-                                anyList(),
-                                eq("admin")
-                        )
-        ).thenReturn(
-                importedResponse(1)
-        );
-
-        CsvImportResponse response =
-                csvImportService.importFile(
-                        file,
-                        "admin"
-                );
-
-        assertThat(response.status())
-                .isEqualTo(
-                        ImportBatchStatus.IMPORTED
-                );
-    }
-
-    @Test
-    @DisplayName(
-            "Un chargement le jour du dernier paiement doit être rejeté"
-    )
-    void shouldRejectImportOnLastPaidPaymentDate() {
-        MockMultipartFile file =
-                createUploadedFile();
-
-        configureParsedRows(
-                file,
-                List.of(
-                        row(
-                                2,
-                                "POL001",
-                                "Client Exemple",
-                                "500000.00",
-                                DEFAULT_END_DATE
-                        )
-                )
-        );
-
-        when(
-                policyMaturityRepository
-                        .findAllByPolicyNumberIn(
-                                anyCollection()
-                        )
-        ).thenReturn(
-                List.of(
-                        maturity(
-                                "POL001",
-                                "Client Exemple",
-                                1,
-                                "2025-01-01",
-                                DEFAULT_END_DATE
-                        )
-                )
-        );
-
-        when(
-                paymentRepository
-                        .findAllByPolicyNumbersAndStatus(
-                                anyCollection(),
-                                eq(PaymentStatus.PAID)
-                        )
-        ).thenReturn(
-                List.of(
-                        paidPayment(
-                                10L,
-                                "POL001",
-                                BUSINESS_DATE.toString()
+                                "2026-09-18"
                         )
                 )
         );
@@ -1111,7 +1117,7 @@ class CsvImportServiceImplTest {
                 .anySatisfy(error -> {
                     assertThat(error.column())
                             .isEqualTo(
-                                    "date_chargement"
+                                    "date_maturite"
                             );
 
                     assertThat(error.code())
@@ -1133,6 +1139,23 @@ class CsvImportServiceImplTest {
                                 List.of()
                         )
                 );
+    }
+
+    private void configureImportedResponse(
+            int totalRows,
+            CsvImportResponse response
+    ) {
+        when(
+                persistenceService
+                        .saveImportedBatch(
+                                anyString(),
+                                anyString(),
+                                anyLong(),
+                                eq(totalRows),
+                                anyList(),
+                                eq("admin")
+                        )
+        ).thenReturn(response);
     }
 
     private void configureRejectedResponse(
@@ -1189,8 +1212,8 @@ class CsvImportServiceImplTest {
         return csv(
                 "maturites.csv",
                 """
-                num_police;nom_client;montant_maturite;date_fin_interets
-                POL001;Client Exemple;2500000.00;2030-03-15
+                num_police;nom_client;date_maturite;montant_maturite;date_fin_interets
+                POL001;Client Exemple;2026-09-18;2500000.00;2030-03-15
                 """
         );
     }
@@ -1199,6 +1222,7 @@ class CsvImportServiceImplTest {
             int rowNumber,
             String policyNumber,
             String clientName,
+            String maturityDate,
             String amount,
             String interestEndDate
     ) {
@@ -1206,10 +1230,9 @@ class CsvImportServiceImplTest {
                 rowNumber,
                 policyNumber,
                 clientName,
+                LocalDate.parse(maturityDate),
                 new BigDecimal(amount),
-                LocalDate.parse(
-                        interestEndDate
-                )
+                LocalDate.parse(interestEndDate)
         );
     }
 

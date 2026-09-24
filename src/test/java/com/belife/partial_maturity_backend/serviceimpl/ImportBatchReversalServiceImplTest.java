@@ -63,22 +63,18 @@ class ImportBatchReversalServiceImplTest {
             "Erreur détectée dans les montants du fichier.";
 
     @Mock
-    private ImportBatchRepository
-            importBatchRepository;
+    private ImportBatchRepository importBatchRepository;
 
     @Mock
-    private PolicyMaturityRepository
-            policyMaturityRepository;
+    private PolicyMaturityRepository policyMaturityRepository;
 
     @Mock
-    private PaymentRepository
-            paymentRepository;
+    private PaymentRepository paymentRepository;
 
     @Mock
     private AuditService auditService;
 
-    private ImportBatchReversalServiceImpl
-            reversalService;
+    private ImportBatchReversalServiceImpl reversalService;
 
     @BeforeEach
     void setUp() {
@@ -1107,6 +1103,121 @@ class ImportBatchReversalServiceImplTest {
                 );
     }
 
+    @Test
+    @DisplayName(
+            "La réversion doit accepter des maturités restantes ayant la même date"
+    )
+    void shouldAllowRemainingMaturitiesWithSameBusinessDate() {
+        ImportBatchEntity firstBatch =
+                importedBatch(
+                        1L,
+                        "premier-lot.csv"
+                );
+
+        ImportBatchEntity secondBatch =
+                importedBatch(
+                        2L,
+                        "dernier-lot.csv"
+                );
+
+        PolicyMaturityEntity rankOne =
+                maturity(
+                        101L,
+                        firstBatch,
+                        "POL001",
+                        1,
+                        "2026-09-18",
+                        "1000000.00",
+                        "2030-12-31"
+                );
+
+        PolicyMaturityEntity rankTwo =
+                maturity(
+                        102L,
+                        firstBatch,
+                        "POL001",
+                        2,
+                        "2026-09-18",
+                        "500000.00",
+                        "2030-12-31"
+                );
+
+        PolicyMaturityEntity rankThree =
+                maturity(
+                        103L,
+                        secondBatch,
+                        "POL001",
+                        3,
+                        "2026-09-19",
+                        "250000.00",
+                        "2030-12-31"
+                );
+
+        when(
+                importBatchRepository
+                        .findByIdForUpdate(2L)
+        ).thenReturn(
+                Optional.of(secondBatch)
+        );
+
+        when(
+                policyMaturityRepository
+                        .findAllByImportBatchIdOrderByPolicyNumberAscMaturityRankAsc(
+                                2L
+                        )
+        ).thenReturn(
+                List.of(rankThree)
+        );
+
+        when(
+                policyMaturityRepository
+                        .findAllByPolicyNumberForPaymentUpdate(
+                                "POL001"
+                        )
+        ).thenReturn(
+                List.of(
+                        rankOne,
+                        rankTwo,
+                        rankThree
+                )
+        );
+
+        when(
+                paymentRepository
+                        .findAllByPolicyNumbersAndStatus(
+                                anyCollection(),
+                                eq(PaymentStatus.PAID)
+                        )
+        ).thenReturn(List.of());
+
+        when(
+                importBatchRepository
+                        .saveAndFlush(secondBatch)
+        ).thenReturn(secondBatch);
+
+        ImportBatchDetailResponse response =
+                reversalService.reverseImportBatch(
+                        2L,
+                        request(),
+                        ADMIN_USERNAME
+                );
+
+        assertThat(response.status())
+                .isEqualTo(
+                        ImportBatchStatus.REVERSED
+                );
+
+        verify(
+                policyMaturityRepository
+        ).deleteAllInBatch(
+                List.of(rankThree)
+        );
+
+        verify(auditService).record(
+                any(AuditRecordCommand.class)
+        );
+    }
+
     private ReverseImportBatchRequest request() {
         return new ReverseImportBatchRequest(
                 REVERSAL_REASON
@@ -1170,6 +1281,9 @@ class ImportBatchReversalServiceImplTest {
         maturity.setId(id);
         maturity.setImportBatch(batch);
         maturity.setPolicyNumber(policyNumber);
+        maturity.setClientName(
+                "CLIENT EXEMPLE"
+        );
         maturity.setMaturityType(
                 "MATURITE_" + rank
         );

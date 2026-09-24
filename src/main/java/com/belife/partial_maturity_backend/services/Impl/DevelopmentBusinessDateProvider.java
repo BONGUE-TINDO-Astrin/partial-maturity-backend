@@ -18,8 +18,7 @@ import java.time.format.DateTimeParseException;
  */
 @Component
 @Profile("dev")
-public class DevelopmentBusinessDateProvider
-        implements BusinessDateProvider {
+public class DevelopmentBusinessDateProvider implements BusinessDateProvider {
 
     private final Clock clock;
     private final LocalDate configuredBusinessDate;

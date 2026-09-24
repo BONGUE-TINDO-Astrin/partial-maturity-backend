@@ -21,12 +21,6 @@ import java.time.LocalDate;
 /**
  * Représente une maturité d'une police importée
  * depuis un fichier CSV.
- *
- * <p>Le type de maturité est généré à partir du rang
- * sous la forme {@code MATURITE_N}.</p>
- *
- * <p>La date de maturité correspond à la date métier
- * du chargement. Elle ne provient plus du fichier CSV.</p>
  */
 @Getter
 @Setter
@@ -38,62 +32,31 @@ import java.time.LocalDate;
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "uq_policy_maturity_policy_rank",
-                        columnNames = {
-                                "policy_number",
-                                "maturity_rank"
-                        }
+                        columnNames = {"policy_number", "maturity_rank"}
                 )
         }
 )
-public class PolicyMaturityEntity
-        extends AuditableEntity {
+public class PolicyMaturityEntity extends AuditableEntity {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.IDENTITY
-    )
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /**
      * Lot d'import ayant créé cette maturité.
      */
-    @ManyToOne(
-            fetch = FetchType.LAZY,
-            optional = false
-    )
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "import_batch_id",
             nullable = false,
-            foreignKey = @ForeignKey(
-                    name = "fk_policy_maturity_import_batch"
-            )
+            foreignKey = @ForeignKey(name = "fk_policy_maturity_import_batch")
     )
     private ImportBatchEntity importBatch;
 
-    /**
-     * Numéro de police provenant du fichier CSV.
-     *
-     * <p>La valeur reste une chaîne afin de conserver
-     * les éventuels zéros initiaux.</p>
-     */
-    @Column(
-            name = "policy_number",
-            nullable = false,
-            length = 100
-    )
+    @Column(name = "policy_number", nullable = false, length = 100)
     private String policyNumber;
 
-    /**
-     * Nom du client provenant du fichier CSV.
-     *
-     * <p>Le service d'import garantit que les lignes
-     * d'une même police utilisent un nom cohérent.</p>
-     */
-    @Column(
-            name = "client_name",
-            nullable = false,
-            length = 200
-    )
+    @Column(name = "client_name", nullable = false, length = 200)
     private String clientName;
 
     /**
@@ -102,69 +65,31 @@ public class PolicyMaturityEntity
      * <p>Exemples : {@code MATURITE_1},
      * {@code MATURITE_2} ou {@code MATURITE_15}.</p>
      */
-    @Column(
-            name = "maturity_type",
-            nullable = false,
-            length = 50
-    )
+    @Column(name = "maturity_type", nullable = false, length = 50)
     private String maturityType;
 
     /**
      * Rang séquentiel attribué automatiquement
-     * par le backend.
-     *
-     * <p>Le rang commence à 1 et ne possède aucune
-     * limite métier maximale.</p>
      */
-    @Column(
-            name = "maturity_rank",
-            nullable = false
-    )
+    @Column(name = "maturity_rank", nullable = false)
     private int maturityRank;
 
-    /**
-     * Date métier du chargement ayant créé
-     * la maturité.
-     *
-     * <p>Toutes les lignes d'un même chargement
-     * reçoivent la même date de maturité.</p>
-     */
-    @Column(
-            name = "maturity_date",
-            nullable = false
-    )
+    @Column(name = "maturity_date", nullable = false)
     private LocalDate maturityDate;
 
-    /**
-     * Montant nominal de la maturité.
-     */
-    @Column(
-            name = "maturity_amount",
-            nullable = false,
-            precision = 19,
-            scale = 6
-    )
+    @Column(name = "maturity_amount", nullable = false, precision = 19, scale = 6)
     private BigDecimal maturityAmount;
 
     /**
      * Date de fin de production des intérêts.
-     *
-     * <p>Cette date reste commune à toutes les
-     * maturités d'une même police.</p>
      */
-    @Column(
-            name = "interest_end_date",
-            nullable = false
-    )
+    @Column(name = "interest_end_date", nullable = false)
     private LocalDate interestEndDate;
 
     /**
      * Numéro physique de la ligne source
      * dans le fichier CSV.
      */
-    @Column(
-            name = "source_row_number",
-            nullable = false
-    )
+    @Column(name = "source_row_number", nullable = false)
     private int sourceRowNumber;
 }

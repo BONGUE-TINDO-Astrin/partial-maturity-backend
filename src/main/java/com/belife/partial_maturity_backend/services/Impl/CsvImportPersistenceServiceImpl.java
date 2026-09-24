@@ -50,8 +50,7 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
     ) {
         Instant processingTime = Instant.now();
 
-        ImportBatchEntity batch =
-                new ImportBatchEntity();
+        ImportBatchEntity batch = new ImportBatchEntity();
 
         batch.setOriginalFileName(fileName);
         batch.setFileSha256(fileSha256);
@@ -65,21 +64,14 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
         batch.setImportedAt(processingTime);
         batch.setImportedBy(currentUsername);
 
-        ImportBatchEntity savedBatch =
-                importBatchRepository.save(batch);
+        ImportBatchEntity savedBatch = importBatchRepository.save(batch);
 
-        List<PolicyMaturityEntity> maturities =
-                newRows.stream()
-                        .map(row ->
-                                toEntity(
-                                        row,
-                                        savedBatch
-                                )
-                        )
-                        .toList();
+        List<PolicyMaturityEntity> maturities = newRows
+                .stream()
+                .map(row -> toEntity(row, savedBatch))
+                .toList();
 
-        policyMaturityRepository
-                .saveAllAndFlush(maturities);
+        policyMaturityRepository.saveAllAndFlush(maturities);
 
         auditService.record(
                 new AuditRecordCommand(
@@ -96,13 +88,11 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
                                 "batchId",
                                 savedBatch.getId(),
                                 "fileName",
-                                savedBatch
-                                        .getOriginalFileName(),
+                                savedBatch.getOriginalFileName(),
                                 "fileSha256",
                                 savedBatch.getFileSha256(),
                                 "fileSizeBytes",
-                                savedBatch
-                                        .getFileSizeBytes(),
+                                savedBatch.getFileSizeBytes(),
                                 "totalRows",
                                 savedBatch.getTotalRows(),
                                 "insertedRows",
@@ -112,9 +102,7 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
                                 "errorRows",
                                 savedBatch.getErrorRows(),
                                 "status",
-                                savedBatch
-                                        .getStatus()
-                                        .name()
+                                savedBatch.getStatus().name()
                         )
                 )
         );
@@ -133,9 +121,7 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
     }
 
     @Override
-    @Transactional(
-            propagation = Propagation.REQUIRES_NEW
-    )
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CsvImportResponse saveRejectedBatch(
             String fileName,
             String fileSha256,
@@ -146,8 +132,7 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
     ) {
         Instant processingTime = Instant.now();
 
-        ImportBatchEntity batch =
-                new ImportBatchEntity();
+        ImportBatchEntity batch = new ImportBatchEntity();
 
         batch.setOriginalFileName(fileName);
         batch.setFileSha256(fileSha256);
@@ -155,26 +140,20 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
         batch.setTotalRows(totalRows);
         batch.setInsertedRows(0);
         batch.setExistingRows(0);
-        batch.setErrorRows(
-                countAffectedRows(errors)
-        );
+        batch.setErrorRows(countAffectedRows(errors));
         batch.setStatus(ImportBatchStatus.REJECTED);
-        batch.setErrorSummary(
-                errorJsonCodec.write(errors)
-        );
+        batch.setErrorSummary(errorJsonCodec.write(errors));
         batch.setImportedAt(null);
         batch.setImportedBy(null);
 
-        ImportBatchEntity savedBatch =
-                importBatchRepository
-                        .saveAndFlush(batch);
+        ImportBatchEntity savedBatch = importBatchRepository.saveAndFlush(batch);
 
-        List<String> errorCodes =
-                errors.stream()
-                        .map(CsvValidationError::code)
-                        .distinct()
-                        .sorted()
-                        .toList();
+        List<String> errorCodes = errors
+                .stream()
+                .map(CsvValidationError::code)
+                .distinct()
+                .sorted()
+                .toList();
 
         auditService.record(
                 new AuditRecordCommand(
@@ -193,13 +172,11 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
                                 "batchId",
                                 savedBatch.getId(),
                                 "fileName",
-                                savedBatch
-                                        .getOriginalFileName(),
+                                savedBatch.getOriginalFileName(),
                                 "fileSha256",
                                 savedBatch.getFileSha256(),
                                 "fileSizeBytes",
-                                savedBatch
-                                        .getFileSizeBytes(),
+                                savedBatch.getFileSizeBytes(),
                                 "totalRows",
                                 savedBatch.getTotalRows(),
                                 "insertedRows",
@@ -211,9 +188,7 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
                                 "errorCodes",
                                 errorCodes,
                                 "status",
-                                savedBatch
-                                        .getStatus()
-                                        .name()
+                                savedBatch.getStatus().name()
                         )
                 )
         );
@@ -231,12 +206,8 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
         );
     }
 
-    private PolicyMaturityEntity toEntity(
-            MaturityImportRow row,
-            ImportBatchEntity batch
-    ) {
-        PolicyMaturityEntity entity =
-                new PolicyMaturityEntity();
+    private PolicyMaturityEntity toEntity( MaturityImportRow row, ImportBatchEntity batch) {
+        PolicyMaturityEntity entity = new PolicyMaturityEntity();
 
         entity.setImportBatch(batch);
         entity.setPolicyNumber(row.policyNumber());
@@ -245,25 +216,18 @@ public class CsvImportPersistenceServiceImpl implements CsvImportPersistenceServ
         entity.setMaturityRank(row.maturityRank());
         entity.setMaturityDate(row.maturityDate());
         entity.setMaturityAmount(row.maturityAmount());
-        entity.setInterestEndDate(
-                row.interestEndDate()
-        );
+        entity.setInterestEndDate(row.interestEndDate());
         entity.setSourceRowNumber(row.rowNumber());
 
         return entity;
     }
 
-    private int countAffectedRows(
-            List<CsvValidationError> errors
-    ) {
-        long affectedRows =
-                errors.stream()
-                        .map(
-                                CsvValidationError
-                                        ::rowNumber
-                        )
-                        .distinct()
-                        .count();
+    private int countAffectedRows(List<CsvValidationError> errors) {
+        long affectedRows = errors
+                .stream()
+                .map(CsvValidationError::rowNumber)
+                .distinct()
+                .count();
 
         return Math.toIntExact(affectedRows);
     }
